@@ -1,4 +1,4 @@
-import { sbAdmin } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 
 // Personal iCal feed: every dated appointment from every project the token's owner belongs to.
 // Google Calendar subscribes to this URL ("From URL") and refreshes it on its own schedule.
@@ -19,19 +19,13 @@ const nextDay = (d: string) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCD
 export async function GET(req: Request, { params }: { params: { token: string } }) {
   const token = params.token.replace(/\.ics$/i, '');
   if (!/^[a-f0-9]{32,80}$/.test(token)) return new Response('Not found', { status: 404 });
-  const db = sbAdmin();
-  const { data: me, error: meErr } = await db.from('profiles').select('id, full_name, email').eq('calendar_token', token).maybeSingle();
-  if (meErr) { console.error('calendar feed profile lookup failed:', meErr.message, meErr.code); return new Response('Feed unavailable', { status: 503 }); }
-  if (!me) return new Response('Not found', { status: 404 });
-  const { data: mem } = await db.from('project_members').select('project_id').eq('user_id', me.id);
-  const ids = (mem || []).map(m => m.project_id);
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+  const { data: feed, error } = await db.rpc('calendar_feed', { p_token: token });
+  if (error) { console.error('calendar feed lookup failed:', error.message, error.code); return new Response('Feed unavailable', { status: 503 }); }
+  if (!feed) return new Response('Not found', { status: 404 });
+  const me = { full_name: feed.full_name as string | null };
+  const projects = (feed.projects || []) as any[]; const events = (feed.events || []) as any[];
   const site = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-  const [{ data: projects }, { data: events }] = ids.length
-    ? await Promise.all([
-        db.from('projects').select('id, name, brand, locations, wrap_time').in('id', ids),
-        db.from('events').select('id, project_id, kind, type, date, time, title, created_at').in('project_id', ids).not('date', 'is', null)
-      ])
-    : [{ data: [] as any[] }, { data: [] as any[] }];
   const P = Object.fromEntries((projects || []).map(p => [p.id, p]));
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HOOSE//Production Management//TH', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
