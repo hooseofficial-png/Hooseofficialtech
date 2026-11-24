@@ -1,0 +1,29 @@
+{
+  "name": "hoose-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HOOSE · Production Management Platform (pre-production planning)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "import:artifact": "node scripts/import-artifact.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "0.5.2",
+    "@supabase/supabase-js": "2.46.1",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.2",
+    "next": "14.2.35",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.6.3"
+  }
+}
