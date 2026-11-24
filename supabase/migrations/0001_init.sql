@@ -54,7 +54,7 @@ create table public.projects (
   locked_at        timestamptz,
   locked_by        uuid references public.profiles (id) on delete set null,
   share_enabled    boolean not null default false,
-  share_token      text not null unique default encode(gen_random_bytes(16), 'hex'),
+  share_token      text not null unique default replace(gen_random_uuid()::text, '-', ''),
   share_budget     boolean not null default false,
   created_by       uuid references public.profiles (id) on delete set null default auth.uid(),
   created_at       timestamptz not null default now(),
@@ -206,7 +206,7 @@ $$;
 -- Triggers
 -- =====================================================================
 create or replace function public.touch_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = public as $$
 begin new.updated_at = now(); return new; end $$;
 
 create trigger projects_touch before update on public.projects for each row execute function public.touch_updated_at();
@@ -231,7 +231,7 @@ create trigger projects_created after insert on public.projects for each row exe
 
 -- Locked details cannot change (only the lock itself / share settings may change).
 create or replace function public.enforce_details_lock()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = public as $$
 begin
   if old.details_locked and new.details_locked and (
        (to_jsonb(new) - array['details_locked','locked_at','locked_by','share_enabled','share_token','share_budget','updated_at'])
@@ -338,7 +338,7 @@ end $$;
 -- New share token (old links stop working).
 create or replace function public.rotate_share_token(pid uuid)
 returns text language plpgsql security definer set search_path = public as $$
-declare t text := encode(gen_random_bytes(16), 'hex');
+declare t text := replace(gen_random_uuid()::text, '-', '');
 begin
   if not public.can_edit(pid) then raise exception 'ไม่มีสิทธิ์'; end if;
   update public.projects set share_token = t where id = pid;
@@ -366,12 +366,12 @@ alter table public.budget_lines    enable row level security;
 alter table public.announcements   enable row level security;
 
 -- profiles: yourself only (other names come through project_people()).
-create policy profiles_self_read   on public.profiles for select to authenticated using (id = auth.uid());
-create policy profiles_self_update on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+create policy profiles_self_read   on public.profiles for select to authenticated using (id = (select auth.uid()));
+create policy profiles_self_update on public.profiles for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
 -- projects: members read · any logged-in user creates (becomes owner) · editors update · owner deletes.
-create policy projects_read   on public.projects for select to authenticated using (public.is_member(id) or created_by = auth.uid());
-create policy projects_insert on public.projects for insert to authenticated with check (created_by = auth.uid());
+create policy projects_read   on public.projects for select to authenticated using (public.is_member(id) or created_by = (select auth.uid()));
+create policy projects_insert on public.projects for insert to authenticated with check (created_by = (select auth.uid()));
 create policy projects_update on public.projects for update to authenticated using (public.can_edit(id)) with check (public.can_edit(id));
 create policy projects_delete on public.projects for delete to authenticated using (public.is_owner(id));
 
@@ -379,7 +379,7 @@ create policy projects_delete on public.projects for delete to authenticated usi
 create policy members_read   on public.project_members for select to authenticated using (public.is_member(project_id));
 create policy members_insert on public.project_members for insert to authenticated with check (public.can_edit(project_id) and (role <> 'owner' or public.is_owner(project_id)));
 create policy members_update on public.project_members for update to authenticated using (public.can_edit(project_id) and (role <> 'owner' or public.is_owner(project_id))) with check (public.can_edit(project_id) and (role <> 'owner' or public.is_owner(project_id)));
-create policy members_delete on public.project_members for delete to authenticated using ((public.can_edit(project_id) and (role <> 'owner' or public.is_owner(project_id))) or user_id = auth.uid());
+create policy members_delete on public.project_members for delete to authenticated using ((public.can_edit(project_id) and (role <> 'owner' or public.is_owner(project_id))) or user_id = (select auth.uid()));
 
 create policy invites_all on public.project_invites for all to authenticated using (public.can_edit(project_id)) with check (public.can_edit(project_id));
 
@@ -398,6 +398,10 @@ grant execute on function public.project_summary(uuid), public.invite_member(uui
   public.rotate_share_token(uuid), public.my_share_token(uuid), public.my_role(uuid),
   public.can_edit(uuid), public.is_member(uuid), public.is_owner(uuid) to authenticated;
 revoke execute on function public.summary_json(uuid, boolean) from public, anon, authenticated;
+revoke execute on function public.invite_member(uuid, text, public.member_role), public.project_people(uuid), public.project_summary(uuid),
+  public.rotate_share_token(uuid), public.my_share_token(uuid), public.my_role(uuid),
+  public.can_edit(uuid), public.is_member(uuid), public.is_owner(uuid) from public, anon;
+revoke execute on function public.on_auth_user_created(), public.on_project_created(), public.touch_updated_at(), public.enforce_details_lock() from public, anon, authenticated;
 
 -- =====================================================================
 -- Storage: private bucket, files under projects/<project_id>/…
@@ -406,13 +410,13 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('project-files', 'project-files', false, 52428800)   -- 50 MB per file
 on conflict (id) do nothing;
 
-create policy files_read on storage.objects for select to authenticated
+create policy hoose_files_read on storage.objects for select to authenticated
   using (bucket_id = 'project-files' and (storage.foldername(name))[1] = 'projects' and public.is_member(((storage.foldername(name))[2])::uuid));
-create policy files_insert on storage.objects for insert to authenticated
+create policy hoose_files_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'project-files' and (storage.foldername(name))[1] = 'projects' and public.can_edit(((storage.foldername(name))[2])::uuid));
-create policy files_update on storage.objects for update to authenticated
+create policy hoose_files_update on storage.objects for update to authenticated
   using (bucket_id = 'project-files' and (storage.foldername(name))[1] = 'projects' and public.can_edit(((storage.foldername(name))[2])::uuid));
-create policy files_delete on storage.objects for delete to authenticated
+create policy hoose_files_delete on storage.objects for delete to authenticated
   using (bucket_id = 'project-files' and (storage.foldername(name))[1] = 'projects' and public.can_edit(((storage.foldername(name))[2])::uuid));
 
 -- =====================================================================
