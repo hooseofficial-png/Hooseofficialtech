@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import Modal from '@/components/Modal';
 import { MonthGrid, MonthNav, Legend } from '@/components/Calendar';
+import CalendarSync from '@/components/CalendarSync';
 import { sb, BUCKET } from '@/lib/supabase/client';
 import { loadFull } from '@/components/ProjectProvider';
 import { dateRange, docOk, evKey, evLabel, firstShoot, fmtS, hm, ini, readyPct, todayISO, type HEvent, type ProjectData, type Project, type Role } from '@/lib/domain';
@@ -64,6 +65,7 @@ export default function Overview() {
         <div className="between"><h1>ภาพรวม</h1><button className="btn p" onClick={create}>+ โปรเจกต์ใหม่</button></div>
         {items === null ? <><div className="skel" /><div className="skel" /></> : <>
           <div className="grid">{stats.map(([l, v]) => <div key={l} className="card c3" style={{ gap: 4 }}><span className="cap">{l}</span><b className="num" style={{ font: '600 28px/1.1 var(--f-display)' }}>{v}</b></div>)}</div>
+          <CalendarSync variant="card" />
           {!managed.length && !viewing.length && <div className="empty"><h2 style={{ color: 'var(--ink)' }}>ยังไม่มีโปรเจกต์</h2><p>สร้างโปรเจกต์แรก แล้วกรอกรายละเอียด ทีมงาน และเอกสาร ทุกคนในทีมเห็นข้อมูลเดียวกันทันที</p><button className="btn p" onClick={create}>+ สร้างโปรเจกต์แรก</button></div>}
           {managed.length > 0 && <div className="pcards">
             {managed.map(({ project: p, full: d, role }) => {
@@ -88,7 +90,7 @@ export default function Overview() {
           {viewing.length > 0 && <section className="card"><h2>โปรเจกต์ที่ดูได้ (Viewer)</h2><div className="list">
             {viewing.map(({ project: p }) => <div className="li" key={p.id}><span className="grow"><b>{p.name || 'โปรเจกต์'}</b> <span className="mut">{dateRange(p)}</span></span><Link className="btn sm" href={`/p/${p.id}/summary`}>ดูสรุปผล</Link></div>)}
           </div></section>}
-          {managed.length > 0 && <section className="card"><div className="between"><h2>ปฏิทินทุกโปรเจกต์</h2><MonthNav month={month} setMonth={setMonth} /></div>
+          {managed.length > 0 && <section className="card"><div className="between"><h2>ปฏิทินทุกโปรเจกต์</h2><div className="row w"><CalendarSync /><MonthNav month={month} setMonth={setMonth} /></div></div>
             <MonthGrid month={month} items={allEv.map(x => ({ e: x.e, label: (x.p.name || 'โปรเจกต์').split(' ')[0], title: (x.p.name || 'โปรเจกต์') + ' · ' + evLabel(x.e) }))} /><Legend /></section>}
         </>}
       </main>

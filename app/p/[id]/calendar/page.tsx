@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useProject } from '@/components/ProjectProvider';
 import EventRow from '@/components/EventRow';
+import CalendarSync from '@/components/CalendarSync';
 import { MonthGrid, MonthNav, Legend } from '@/components/Calendar';
 import { sb } from '@/lib/supabase/client';
 import { ET, KINDS, evKey, firstShoot, fmtS, hm, todayISO, type EventType, type HEvent } from '@/lib/domain';
@@ -54,7 +55,7 @@ export default function CalendarPage() {
           <input type="checkbox" id="ev-tbd" checked={f.tbd} onChange={e => setF({ ...f, tbd: e.target.checked })} style={{ width: 18, height: 18, accentColor: 'var(--blue)' }} />ยังไม่ระบุวัน (มีหัวข้อแล้ว รอยืนยันวัน)</label>
         <div className="row w"><button className="btn p" onClick={save}>{editing ? 'บันทึก' : 'เพิ่มลงปฏิทิน'}</button>{editing && <button className="btn" onClick={() => { setEditing(null); setF(blank); }}>ยกเลิก</button>}</div>
       </section>
-      <section className="card c12"><div className="between"><h2>ปฏิทินทีม</h2><MonthNav month={m} setMonth={setMonth} /></div><MonthGrid month={m} items={ev.map(e => ({ e, label: hm(e.time) || ET[e.type][0], title: e.title || e.kind }))} /><Legend /></section>
+      <section className="card c12"><div className="between"><h2>ปฏิทินทีม</h2><div className="row w"><CalendarSync /><MonthNav month={m} setMonth={setMonth} /></div></div><MonthGrid month={m} items={ev.map(e => ({ e, label: hm(e.time) || ET[e.type][0], title: e.title || e.kind }))} /><Legend /></section>
       <section className="card c12">
         <div className="between"><h2>รายการนัด</h2><div className="seg" role="group" aria-label="ตัวกรอง">{([['all', 'ทั้งหมด'], ['brief', 'บรีฟ'], ['meeting', 'ประชุม'], ['shoot', 'ถ่ายทำ']] as const).map(([k, l]) => <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>)}</div></div>
         {!list.length && <div className="empty">ยังไม่มีนัดหมาย</div>}

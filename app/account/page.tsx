@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
+import CalendarSync from '@/components/CalendarSync';
 import { sb } from '@/lib/supabase/client';
 import { toast, errText } from '@/lib/ui';
 
@@ -27,6 +28,7 @@ export default function Account() {
         <label className="f" htmlFor="li">LINE ID<input className="in-t" id="li" value={p.line_id} onChange={e => setP({ ...p, line_id: e.target.value })} /></label>
         <button className="btn p">บันทึก</button>
       </form>
+      <CalendarSync variant="card" />
       <form className="card" onSubmit={setPassword}>
         <h2>รหัสผ่าน</h2>
         <span className="mut" style={{ fontSize: 13 }}>ตั้งรหัสผ่านเพื่อเข้าสู่ระบบได้ทันที ไม่ต้องรออีเมล</span>
