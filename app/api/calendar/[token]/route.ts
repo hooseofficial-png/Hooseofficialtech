@@ -5,7 +5,7 @@ import { sbAdmin } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 const KIND: Record<string, string> = { shoot: 'Shoot Day', brief: 'Brief before Production', meeting: 'Meeting' };
-const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 const fold = (line: string) => { const out: string[] = []; let s = line; while (Buffer.byteLength(s) > 74) { let n = 74; while (Buffer.byteLength(s.slice(0, n)) > 74) n--; out.push(s.slice(0, n)); s = ' ' + s.slice(n); } out.push(s); return out.join('\r\n'); };
 const ymd = (d: string) => d.replace(/-/g, '');
 // Bangkok is UTC+7 all year: local wall time → UTC stamp.
@@ -20,7 +20,8 @@ export async function GET(req: Request, { params }: { params: { token: string } 
   const token = params.token.replace(/\.ics$/i, '');
   if (!/^[a-f0-9]{32,80}$/.test(token)) return new Response('Not found', { status: 404 });
   const db = sbAdmin();
-  const { data: me } = await db.from('profiles').select('id, full_name, email').eq('calendar_token', token).maybeSingle();
+  const { data: me, error: meErr } = await db.from('profiles').select('id, full_name, email').eq('calendar_token', token).maybeSingle();
+  if (meErr) { console.error('calendar feed profile lookup failed:', meErr.message, meErr.code); return new Response('Feed unavailable', { status: 503 }); }
   if (!me) return new Response('Not found', { status: 404 });
   const { data: mem } = await db.from('project_members').select('project_id').eq('user_id', me.id);
   const ids = (mem || []).map(m => m.project_id);
