@@ -74,7 +74,7 @@ export default function Overview() {
     <>
       <TopBar />
       <main className="wrap">
-        <div className="between"><h1>ภาพรวม</h1><div className="row">{!tour && <button className="btn ghost" onClick={() => setTour(true)}>คู่มือการใช้งาน</button>}<button className="btn p" onClick={create}>+ โปรเจกต์ใหม่</button></div></div>
+        <div className="between"><h1>ภาพรวม</h1><div className="row">{!tour && <button className="btn guide-btn" onClick={() => setTour(true)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"/><path d="M8 7h7M8 11h5"/></svg>คู่มือการใช้งาน</button>}<button className="btn p" onClick={create}>+ โปรเจกต์ใหม่</button></div></div>
         {tour && <WelcomeTour name={me?.name} onClose={closeTour} onCreate={create} />}
         {items === null ? <><div className="skel" /><div className="skel" /></> : <>
           <div className="grid">{stats.map(([l, v]) => <div key={l} className="card c3" style={{ gap: 4 }}><span className="cap">{l}</span><b className="num" style={{ font: '600 28px/1.1 var(--f-display)' }}>{v}</b></div>)}</div>

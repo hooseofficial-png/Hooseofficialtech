@@ -364,3 +364,5 @@ html{scroll-behavior:smooth}
 .bslider input:hover::-webkit-slider-thumb{transform:scale(1.12);box-shadow:0 0 0 6px var(--blue-bg)}
 .bslider input:active::-webkit-slider-thumb{transform:scale(1.2);cursor:grabbing;box-shadow:0 0 0 8px var(--blue-bg)}
 .bslider input:focus-visible{outline:none}.bslider input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--blue-3)}
+.guide-btn{gap:6px;color:var(--blue);border-color:var(--blue-3);background:var(--blue-bg)}
+.guide-btn:not([disabled]):hover{background:#fff;border-color:var(--blue)}
