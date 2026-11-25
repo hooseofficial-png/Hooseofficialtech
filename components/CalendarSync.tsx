@@ -19,6 +19,7 @@ export default function CalendarSync({ variant = 'button' }: { variant?: 'button
   const [open, setOpen] = useState(false);
   const [feedAdded, setFeedAdded] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [gOn, setGOn] = useState(false);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -30,6 +31,7 @@ export default function CalendarSync({ variant = 'button' }: { variant?: 'button
     if (p?.calendar_token) setToken(p.calendar_token);
     if (p?.calendar_feed_seen_at) setFeedAdded(true);
     setConn(((g as Conn[] | null) || [])[0] || null);
+    fetch('/api/google/status').then(r => r.json()).then(j => setGOn(!!j.configured)).catch(() => setGOn(false));
   }, []);
   useEffect(() => { refresh(); return () => { if (poll.current) clearInterval(poll.current); }; }, [refresh]);
 
@@ -61,22 +63,34 @@ export default function CalendarSync({ variant = 'button' }: { variant?: 'button
     setToken(data as string); setFeedAdded(false); toast('สร้างลิงก์ใหม่แล้ว · ลิงก์เดิมใช้ไม่ได้อีก ต้องกด Sync ใหม่');
   }
 
-  const label = conn ? 'Google Calendar · เชื่อมแล้ว' : 'Sync กับ Google Calendar';
-  const trigger = <button className={variant === 'card' ? (conn ? 'btn' : 'btn p') : 'btn sm'} onClick={() => setOpen(true)} disabled={!uid}>{label}</button>;
+  const label = conn && gOn ? 'Google Calendar · เชื่อมแล้ว' : 'Sync กับ Google Calendar';
+  const trigger = <button className={variant === 'card' ? ((conn && gOn) || feedAdded ? 'btn' : 'btn p') : 'btn sm'} onClick={() => setOpen(true)} disabled={!uid}>{label}</button>;
   return (
     <>
       {variant === 'card' ? (
         <section className="card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div className="grow" style={{ minWidth: 220 }}>
             <h2>Google Calendar</h2>
-            {conn ? <span className="gc-ok">✓ ADD เสร็จสิ้น · เชื่อมกับ {conn.google_email || 'บัญชี Google'} แล้ว</span>
-              : <span className="mut" style={{ fontSize: 13 }}>เชื่อมบัญชี Google แล้วนัดบรีฟ ประชุม และวันถ่าย จะส่งเข้า Google Calendar และอีเมลของทีมอัตโนมัติ</span>}
+            {conn && gOn ? <span className="gc-ok">✓ ADD เสร็จสิ้น · เชื่อมกับ {conn.google_email || 'บัญชี Google'} แล้ว</span>
+              : feedAdded ? <span className="gc-ok">✓ ADD เสร็จสิ้น · Google Calendar เพิ่มปฏิทิน HOOSE แล้ว</span>
+              : <span className="mut" style={{ fontSize: 13 }}>{gOn ? 'เชื่อมบัญชี Google แล้วนัดบรีฟ ประชุม และวันถ่าย จะส่งเข้า Google Calendar และอีเมลของทีมอัตโนมัติ' : 'เพิ่มปฏิทิน HOOSE เข้า Google Calendar แล้วนัดบรีฟ ประชุม และวันถ่ายของทุกโปรเจกต์จะขึ้นในปฏิทินของคุณ'}</span>}
           </div>
           {trigger}
         </section>
       ) : trigger}
       {open && <Modal title="Sync กับ Google Calendar" onClose={() => setOpen(false)}>
-        <div className="cap">แบบที่ 1 · เชื่อมบัญชี Google (แนะนำ)</div>
+        {gOn && <div className="cap">แบบที่ 1 · สมัครรับปฏิทินด้วยลิงก์</div>}
+        <p className="mut" style={{ fontSize: 13, margin: 0 }}>กดปุ่มด้านล่าง แล้วกด <b>เพิ่ม (Add)</b> ใน Google Calendar เมื่อ Google เพิ่มเสร็จ หน้านี้จะแจ้ง “ADD เสร็จสิ้น”</p>
+        {feedAdded ? <div className="gc-ok">✓ ADD เสร็จสิ้น · Google Calendar เพิ่มปฏิทิน HOOSE แล้ว</div>
+          : waiting ? <div className="mut" style={{ fontSize: 13 }}>รอ Google เพิ่มปฏิทิน… กด <b>เพิ่ม (Add)</b> ในหน้าต่าง Google Calendar แล้วกลับมาที่นี่</div> : null}
+        <a className="btn" href={google} target="_blank" rel="noopener noreferrer" onClick={watchFeed}>เปิด Google Calendar แล้วกดเพิ่ม</a>
+        <div className="row"><input className="in-t" readOnly value={feed} aria-label="ลิงก์ปฏิทิน" /><button className="btn" onClick={() => copyText(feed, 'คัดลอกลิงก์แล้ว')}>คัดลอก</button></div>
+        <p className="mut" style={{ fontSize: 12, margin: 0 }}>
+          แบบลิงก์: Google อัปเดตเองทุกไม่กี่ชั่วโมง ใช้กับ Apple Calendar / Outlook ได้ · ลิงก์นี้เป็นความลับ ถ้าหลุดให้กด <button className="link-btn" onClick={rotate}>สร้างลิงก์ใหม่</button>
+        </p>
+        {gOn && <>
+        <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '4px 0' }} />
+        <div className="cap">แบบที่ 2 · เชื่อมบัญชี Google (ส่งนัดถึงทีมอัตโนมัติ)</div>
         {conn ? (
           <>
             <div className="gc-ok">✓ ADD เสร็จสิ้น · เชื่อมกับ {conn.google_email || 'บัญชี Google'} แล้ว</div>
@@ -89,15 +103,7 @@ export default function CalendarSync({ variant = 'button' }: { variant?: 'button
             <a className="btn p" href={connectHref}>เชื่อมบัญชี Google</a>
           </>
         )}
-        <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '4px 0' }} />
-        <div className="cap">แบบที่ 2 · สมัครรับปฏิทินด้วยลิงก์ (ดูอย่างเดียว)</div>
-        {feedAdded ? <div className="gc-ok">✓ ADD เสร็จสิ้น · Google Calendar เพิ่มปฏิทิน HOOSE แล้ว</div>
-          : waiting ? <div className="mut" style={{ fontSize: 13 }}>รอ Google เพิ่มปฏิทิน… กด <b>เพิ่ม (Add)</b> ในหน้าต่าง Google Calendar แล้วกลับมาที่นี่</div> : null}
-        <a className="btn" href={google} target="_blank" rel="noopener noreferrer" onClick={watchFeed}>เปิด Google Calendar แล้วกดเพิ่ม</a>
-        <div className="row"><input className="in-t" readOnly value={feed} aria-label="ลิงก์ปฏิทิน" /><button className="btn" onClick={() => copyText(feed, 'คัดลอกลิงก์แล้ว')}>คัดลอก</button></div>
-        <p className="mut" style={{ fontSize: 12, margin: 0 }}>
-          แบบลิงก์: Google อัปเดตเองทุกไม่กี่ชั่วโมง ใช้กับ Apple Calendar / Outlook ได้ · ลิงก์นี้เป็นความลับ ถ้าหลุดให้กด <button className="link-btn" onClick={rotate}>สร้างลิงก์ใหม่</button>
-        </p>
+        </>}
       </Modal>}
     </>
   );
