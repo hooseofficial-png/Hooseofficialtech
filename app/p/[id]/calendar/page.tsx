@@ -35,6 +35,12 @@ export default function CalendarPage() {
       const target = wasEditing || newId; if (target && (row.date || wasEditing)) pushToGoogle(target);
     }
   }
+  async function moveEvent(eventId: string, date: string | null) {
+    const e = ev.find(x => x.id === eventId); if (!e) return;
+    const when = date ? new Date(date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : 'ยังไม่ระบุวัน';
+    const ok = await act(() => sb().from('events').update({ date }).eq('id', eventId), 'ย้าย “' + (e.title || e.kind || ET[e.type][0]) + '” ไป ' + when + ' แล้ว');
+    if (ok && (date || e.date)) pushToGoogle(eventId);
+  }
   async function removeEvent(e: HEvent) {
     if (e.date) await pushToGoogle(e.id, 'DELETE');
     await act(() => sb().from('events').delete().eq('id', e.id), 'ลบนัดแล้ว');
@@ -64,7 +70,9 @@ export default function CalendarPage() {
           <input type="checkbox" id="ev-tbd" checked={f.tbd} onChange={e => setF({ ...f, tbd: e.target.checked })} style={{ width: 18, height: 18, accentColor: 'var(--blue)' }} />ยังไม่ระบุวัน (มีหัวข้อแล้ว รอยืนยันวัน)</label>
         <div className="row w"><button className="btn p" onClick={save}>{editing ? 'บันทึก' : 'เพิ่มลงปฏิทิน'}</button>{editing && <button className="btn" onClick={() => { setEditing(null); setF(blank); }}>ยกเลิก</button>}</div>
       </section>
-      <section className="card c12"><div className="between"><h2>ปฏิทินทีม</h2><div className="row w"><CalendarSync /><MonthNav month={m} setMonth={setMonth} /></div></div><MonthGrid month={m} items={ev.map(e => ({ e, label: hm(e.time) || ET[e.type][0], title: e.title || e.kind }))} /><Legend /></section>
+      <section className="card c12"><div className="between"><h2>ปฏิทินทีม</h2><div className="row w"><CalendarSync /><MonthNav month={m} setMonth={setMonth} /></div></div><MonthGrid month={m} items={ev.filter(e => e.date).map(e => ({ e, label: hm(e.time) || ET[e.type][0], title: e.title || e.kind }))}
+        tbd={ev.filter(e => !e.date).map(e => ({ e, label: e.kind || ET[e.type][0], title: e.title || e.kind }))} onMove={moveEvent} />
+        <div className="mut" style={{ fontSize: 12 }}>ลากนัดไปวางวันอื่นเพื่อเลื่อนนัด · ทีมที่ Sync ไว้จะเห็นวันใหม่อัตโนมัติ</div><Legend /></section>
       <section className="card c12">
         <div className="between"><h2>รายการนัด</h2><div className="seg" role="group" aria-label="ตัวกรอง">{([['all', 'ทั้งหมด'], ['brief', 'บรีฟ'], ['meeting', 'ประชุม'], ['shoot', 'ถ่ายทำ']] as const).map(([k, l]) => <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>)}</div></div>
         {!list.length && <div className="empty">ยังไม่มีนัดหมาย</div>}

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProject } from '@/components/ProjectProvider';
 import { sb } from '@/lib/supabase/client';
 import { budgetAllocated, crewAllCost, crewLine, money, num, suggestion, type ProjectData } from '@/lib/domain';
@@ -13,14 +13,45 @@ function Cell({ value, onSave, numeric, ...rest }: { value: string | number; onS
     onChange={e => setV(e.target.value)} onBlur={() => { if (v !== String(value ?? '')) onSave(v); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />;
 }
 
+/** Drag left/right to set an amount. Live value while dragging; `onCommit` when released. Never exceeds `cap`. */
+function Slider({ value, total, cap, color, label, onLive, onCommit }: { value: number; total: number; cap: number; color: string; label: string; onLive: (v: number) => void; onCommit: (v: number) => void }) {
+  const step = Math.max(100, Math.round(total / 200 / 100) * 100);
+  const pct = total ? Math.min(100, (value / total) * 100) : 0; const capPct = total ? Math.min(100, (cap / total) * 100) : 0;
+  const commit = (e: React.SyntheticEvent<HTMLInputElement>) => onCommit(Math.min(cap, Number((e.target as HTMLInputElement).value)));
+  return (
+    <div className="bslider" style={{ ['--p' as string]: pct + '%', ['--cap' as string]: capPct + '%', ['--c' as string]: color }}>
+      <input type="range" min={0} max={total} step={step} value={Math.min(value, total)} aria-label={'ปรับงบ ' + label}
+        aria-valuetext={Math.round(value).toLocaleString('th-TH') + ' บาท'}
+        onChange={e => onLive(Math.min(cap, Number(e.target.value)))} onPointerUp={commit} onKeyUp={commit} onBlur={commit} />
+    </div>
+  );
+}
+
 const allDraft = (d: ProjectData) => !!d.budget?.drafted && !!d.budget?.crew_alloc_draft && (d.lines || []).filter(l => l.key).every(l => l.draft);
 
 export default function BudgetPage() {
   const { id, data, act, reload } = useProject();
   const [name, setName] = useState(''); const [amt, setAmt] = useState('');
+  const [live, setLive] = useState<Record<string, number>>({});
+  const saving = useRef<Record<string, number>>({});
   if (!data) return null;
-  const B = data.budget!; const lines = data.lines || [];
-  const T = num(B.total); const cl = crewLine(data); const al = budgetAllocated(data); const sg = suggestion(data);
+  const B0 = data.budget!;
+  // Effective data = saved data + values being dragged right now, so every number on the page updates in real time.
+  const dE: ProjectData = { ...data, budget: { ...B0, crew_alloc: live.crew ?? B0.crew_alloc }, lines: (data.lines || []).map(l => (live[l.id] !== undefined ? { ...l, amount: live[l.id] } : l)) };
+  const B = dE.budget!; const lines = dE.lines || [];
+  const T = num(B.total); const cl = crewLine(dE); const al = budgetAllocated(dE); const sg = suggestion(dE);
+  const capFor = (cur: number) => Math.max(cur, T - (al - cur));
+  const liveSet = (k: string, v: number) => setLive(x => ({ ...x, [k]: v }));
+  async function commit(k: string, v: number) {
+    const saved = k === 'crew' ? num(B0.crew_alloc) : num((data!.lines || []).find(l => l.id === k)?.amount);
+    if (saving.current[k] === Math.round(v)) return; // pointerup + blur fire together
+    if (Math.round(v) === Math.round(saved)) { setLive(x => { const y = { ...x }; delete y[k]; return y; }); return; }
+    saving.current[k] = Math.round(v);
+    await act(() => k === 'crew' ? sb().from('budgets').update({ crew_alloc: Math.round(v), crew_alloc_draft: false }).eq('project_id', id)
+      : sb().from('budget_lines').update({ amount: Math.round(v), draft: false }).eq('id', k));
+    delete saving.current[k];
+    setLive(x => { const y = { ...x }; delete y[k]; return y; });
+  }
   const pc = (v: number) => (T ? ((v / T) * 100).toFixed(1) + '%' : '—');
 
   async function applySuggestion(total: number, quietMsg?: string) {
@@ -52,7 +83,11 @@ export default function BudgetPage() {
             <div><div className="cap">จัดสรรแล้ว</div><b className="num" style={{ font: '600 22px var(--f-display)' }}>{pc(al)}</b></div>
             <div><div className="cap">{al > T ? 'เกินงบ' : 'คงเหลือ'}</div><b className="num" style={{ font: '600 22px var(--f-display)' }}>{money(Math.abs(T - al))} · {pc(Math.abs(T - al))}</b></div>
           </div>
-          <div className="bar"><i style={{ width: Math.min(100, al / T * 100) + '%', background: al > T ? 'var(--ink)' : undefined }} /></div>
+          <div className="stack" aria-label="สัดส่วนงบตอนนี้">
+            <i style={{ flex: cl, background: colors[0] }} title={'งบทีมงาน ' + money(cl)} />
+            {lines.map((l, i) => <i key={l.id} style={{ flex: num(l.amount), background: colors[(i + 1) % colors.length] }} title={l.name + ' ' + money(num(l.amount))} />)}
+            {T > al && <i className="rest" style={{ flex: T - al }} title={'คงเหลือ ' + money(T - al)} />}
+          </div>
         </> : <div className="mut">ใส่งบรวมที่ได้รับ ระบบจะร่างการแบ่งงบตามสัดส่วนที่เหมาะกับประเภทงานให้อัตโนมัติ</div>}
       </section>
       {T > 0 && <section className="card c12">
@@ -66,16 +101,16 @@ export default function BudgetPage() {
         </tbody></table></div>
       </section>}
       <section className="card c12"><h2>รายการงบ</h2>
-        <div className="tblw"><table className="tbl"><thead><tr><th>รายการ</th><th style={{ textAlign: 'right' }}>จำนวนเงิน</th><th style={{ textAlign: 'right' }}>% ของงบรวม</th><th style={{ width: '26%' }} /><th /></tr></thead><tbody>
+        <div className="tblw"><table className="tbl"><thead><tr><th>รายการ</th><th style={{ textAlign: 'right' }}>จำนวนเงิน</th><th style={{ textAlign: 'right' }}>% ของงบรวม</th><th style={{ width: '30%' }}>{T > 0 ? 'ลากเพื่อปรับ' : ''}</th><th /></tr></thead><tbody>
           <tr><td><b>งบทีมงาน</b><div className="mut" style={{ fontSize: 12 }}>{num(B.crew_alloc) ? (B.crew_alloc_draft ? 'ร่างอัตโนมัติ · แก้ได้ด้านบน' : 'กำหนดเอง') : 'อัตโนมัติ · ตามบอร์ดทีมงาน'}</div></td>
             <td className="num" style={{ textAlign: 'right' }}>{money(cl)}</td><td className="num" style={{ textAlign: 'right' }}>{pc(cl)}</td>
-            <td><div className="bar" style={{ height: 6 }}><i style={{ width: (T ? Math.min(100, cl / T * 100) : 0) + '%' }} /></div></td><td /></tr>
+            <td>{T > 0 ? <Slider value={cl} total={T} cap={capFor(cl)} color={colors[0]} label="งบทีมงาน" onLive={v => liveSet('crew', v)} onCommit={v => commit('crew', v)} /> : null}</td><td /></tr>
           {lines.map(l => (
             <tr key={l.id}>
               <td><Cell style={{ height: 34 }} value={l.name} aria-label="ชื่อรายการ" onSave={v => act(() => sb().from('budget_lines').update({ name: v, draft: false }).eq('id', l.id))} />{l.draft && <span className="chip lb" style={{ height: 18, fontSize: 10, marginTop: 4 }}>ร่างอัตโนมัติ</span>}</td>
               <td style={{ textAlign: 'right' }}><Cell numeric style={{ height: 34, textAlign: 'right', maxWidth: 140 }} value={num(l.amount) || ''} aria-label="จำนวนเงิน" onSave={v => act(() => sb().from('budget_lines').update({ amount: Math.round(num(v)), draft: false }).eq('id', l.id))} /></td>
               <td className="num" style={{ textAlign: 'right' }}>{pc(num(l.amount))}</td>
-              <td><div className="bar" style={{ height: 6 }}><i style={{ width: (T ? Math.min(100, num(l.amount) / T * 100) : 0) + '%', background: 'var(--blue-2)' }} /></div></td>
+              <td>{T > 0 ? <Slider value={num(l.amount)} total={T} cap={capFor(num(l.amount))} color={colors[(lines.indexOf(l) + 1) % colors.length]} label={l.name} onLive={v => liveSet(l.id, v)} onCommit={v => commit(l.id, v)} /> : null}</td>
               <td><button className="btn sm ghost" onClick={() => act(() => sb().from('budget_lines').delete().eq('id', l.id))} aria-label="ลบรายการ">✕</button></td>
             </tr>))}
         </tbody></table></div>

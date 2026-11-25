@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import ProjectProvider, { useProject } from '@/components/ProjectProvider';
 import TopBar from '@/components/TopBar';
 import ShareModal from '@/components/ShareModal';
+import ProjectTitle from '@/components/ProjectTitle';
 
 const TABS: [string, string][] = [['', 'แดชบอร์ด'], ['details', 'รายละเอียด'], ['crew', 'ทีมงาน'], ['docs', 'เอกสาร'], ['calendar', 'ปฏิทินทีม'], ['budget', 'งบประมาณ'], ['summary', 'สรุปผล'], ['members', 'สมาชิก']];
 
@@ -25,7 +26,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       </div></nav>
       <main className="wrap">
         <div className="between">
-          <div className="row" style={{ minWidth: 0 }}><Link className="btn sm ghost" href="/">← ภาพรวม</Link><h1 className="ell">{data.project.name || 'โปรเจกต์ไม่มีชื่อ'}</h1></div>
+          <div className="row" style={{ minWidth: 0 }}><Link className="btn sm ghost" href="/">← ภาพรวม</Link><ProjectTitle /></div>
           <button className="btn sm p" onClick={() => setShare(true)}>แชร์ให้ทีม</button>
         </div>
         {children}

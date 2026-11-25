@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useProject } from '@/components/ProjectProvider';
 import EventRow from '@/components/EventRow';
 import { budgetAllocated, dateRange, daysTo, docOk, evKey, firstShoot, ini, money, num, readiness, readyPct, todayISO } from '@/lib/domain';
+import ProjectTitle from '@/components/ProjectTitle';
 
 export default function Dashboard() {
   const { id, data, signed } = useProject();
@@ -19,7 +20,7 @@ export default function Dashboard() {
     <div className="grid">
       <section className="card hero c8">
         <div className="row"><span className="logo-box">{logo ? <img alt="" src={logo} /> : <b style={{ color: 'var(--blue)', font: '700 16px var(--f-display)' }}>{ini(p.brand || p.name)}</b>}</span>
-          <div className="grow"><div style={{ opacity: .85, fontSize: 13 }}>{[p.brand, p.agency].filter(Boolean).join(' · ') || 'ยังไม่ระบุลูกค้า'}</div><h1 className="ell">{p.name || 'โปรเจกต์ไม่มีชื่อ'}</h1></div></div>
+          <div className="grow"><div style={{ opacity: .85, fontSize: 13 }}>{[p.brand, p.agency].filter(Boolean).join(' · ') || 'ยังไม่ระบุลูกค้า'}</div><ProjectTitle hero /></div></div>
         <div style={{ fontSize: 14 }}>{[dateRange(p), p.queues ? p.queues + ' คิว' : '', p.locations[0]].filter(Boolean).join(' · ') || 'กรอกรายละเอียดเพื่อเริ่ม'}</div>
         <div style={{ fontSize: 13, opacity: .85 }}>{[p.director ? 'ผกก. ' + p.director : '', p.producer ? 'โปรดิวเซอร์ ' + p.producer : ''].filter(Boolean).join(' · ')}</div>
         <Link href={`/p/${id}/docs`} style={{ color: '#fff', textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 340 }}>
