@@ -4,6 +4,7 @@ import { useProject } from '@/components/ProjectProvider';
 import EventRow from '@/components/EventRow';
 import { budgetAllocated, dateRange, daysTo, docOk, evKey, firstShoot, ini, money, num, readiness, readyPct, todayISO } from '@/lib/domain';
 import ProjectTitle from '@/components/ProjectTitle';
+import CountUp from '@/components/CountUp';
 
 export default function Dashboard() {
   const { id, data, signed } = useProject();
@@ -27,12 +28,12 @@ export default function Dashboard() {
           <span className="between" style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.05em' }}><span>เอกสาร</span><span className="num">{dn}/{data.docs.length} หมวดมีไฟล์</span></span>
           <span className="bar" style={{ height: 6 }}><i style={{ width: (data.docs.length ? dn / data.docs.length * 100 : 0) + '%' }} /></span>
         </Link>
-        <div className="big"><b className="num">{n == null ? '–' : n < 0 ? '✓' : n}</b><span style={{ fontSize: 12, opacity: .85 }}>{n == null ? 'ยังไม่ตั้งวันถ่าย' : n < 0 ? 'ถ่ายไปแล้ว' : n === 0 ? 'วันนี้ถ่าย' : 'วันก่อนวันถ่ายวันแรก'}</span></div>
+        <div className="big"><b className="num">{n == null ? '–' : n < 0 ? '✓' : <CountUp value={n} />}</b><span style={{ fontSize: 12, opacity: .85 }}>{n == null ? 'ยังไม่ตั้งวันถ่าย' : n < 0 ? 'ถ่ายไปแล้ว' : n === 0 ? 'วันนี้ถ่าย' : 'วันก่อนวันถ่ายวันแรก'}</span></div>
       </section>
       <section className="card c4"><h2>ทีมงาน</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
           {([['ยืนยัน', cnt('confirmed'), 'b'], ['รอยืนยัน', cnt('pending'), 'lb'], ['Open Call', cnt('open'), 'k']] as const).map(([l, v, c]) =>
-            <div key={l} style={{ background: 'var(--soft)', borderRadius: 12, padding: 10 }}><b className="num" style={{ font: '600 24px var(--f-display)' }}>{v}</b><div><span className={'chip ' + c} style={{ height: 20, fontSize: 11 }}>{l}</span></div></div>)}
+            <div key={l} style={{ background: 'var(--soft)', borderRadius: 12, padding: 10 }}><b className="num" style={{ font: '600 24px var(--f-display)' }}><CountUp value={v} /></b><div><span className={'chip ' + c} style={{ height: 20, fontSize: 11 }}>{l}</span></div></div>)}
         </div>
         <div className="row w" style={{ gap: 6 }}>
           {cr.filter(c => c.status !== 'open').slice(0, 9).map(c => <span key={c.id} className={'av' + (c.status === 'pending' ? ' g' : '')} title={c.position + ' · ' + c.name}>{ini(c.name)}</span>)}
@@ -41,7 +42,7 @@ export default function Dashboard() {
         <Link className="btn sm" href={`/p/${id}/crew`}>จัดการทีมงาน</Link>
       </section>
       <section className="card c12">
-        <div className="between"><h2>ความพร้อมพรีโปรดักชัน</h2><b className="num" style={{ font: '700 28px/1 var(--f-display)', color: 'var(--blue)' }}>{rp}%</b></div>
+        <div className="between"><h2>ความพร้อมพรีโปรดักชัน</h2><b className="num" style={{ font: '700 28px/1 var(--f-display)', color: 'var(--blue)' }}><CountUp value={rp} />%</b></div>
         <div className="bar"><i style={{ width: rp + '%' }} /></div>
         <div className="rd">{readiness(data).map(([k, l, r, v]) =>
           <Link key={l} href={href(k)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--paper)', textDecoration: 'none', color: 'inherit', minWidth: 0 }}>
@@ -55,7 +56,7 @@ export default function Dashboard() {
       </section>
       <section className="card c6"><div className="between"><h2>งบประมาณ</h2><Link className="btn sm" href={`/p/${id}/budget`}>เปิด</Link></div>
         {T ? <>
-          <div className="row" style={{ alignItems: 'baseline' }}><b className="num" style={{ font: '600 26px var(--f-display)' }}>{Math.round(al / T * 100)}%</b><span className="mut">จัดสรรแล้ว จาก {money(T)}</span></div>
+          <div className="row" style={{ alignItems: 'baseline' }}><b className="num" style={{ font: '600 26px var(--f-display)' }}><CountUp value={Math.round(al / T * 100)} />%</b><span className="mut">จัดสรรแล้ว จาก {money(T)}</span></div>
           <div className="bar"><i style={{ width: Math.min(100, al / T * 100) + '%', background: al > T ? 'var(--ink)' : undefined }} /></div>
           <div className="mut">{al > T ? 'เกินงบรวม ' + money(al - T) : 'คงเหลือ ' + money(T - al)}</div>
         </> : <div className="mut">ยังไม่ตั้งงบรวม</div>}

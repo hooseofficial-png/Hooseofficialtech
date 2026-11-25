@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useProject } from '@/components/ProjectProvider';
 import { sb } from '@/lib/supabase/client';
 import { D, TYPES, fmtL, iso, num, shootDays, type Project } from '@/lib/domain';
-import { toast, errText } from '@/lib/ui';
+import { toast, errText, celebrate } from '@/lib/ui';
 import { pushToGoogle } from '@/lib/gsync';
 
 type Key = keyof Project;
@@ -93,7 +93,7 @@ export default function Details() {
       <section className="card c12"><h2>กลุ่ม LINE ของทีม</h2><div className="fg"><Field locked={L} label="ลิงก์เชิญกลุ่ม LINE" k="line_group_link" ph="https://line.me/R/ti/g/…" /></div><span className="mut" style={{ fontSize: 12 }}>ใส่ในข้อความยืนยันที่ส่งให้ทีมงาน</span></section>
       <section className="card c12" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
         {L ? <><span className="chip b">✓ ยืนยันแล้ว</span><span className="grow mut" style={{ fontSize: 13 }}>กด “แก้ไขรายละเอียด” เพื่อปลดล็อก</span><button className="btn" onClick={() => upd({ details_locked: false })}>แก้ไขรายละเอียด</button></>
-          : <><span className="grow mut" style={{ fontSize: 13 }}>ตรวจข้อมูลให้ครบแล้วกดยืนยัน ระบบจะล็อกหน้านี้ (ฐานข้อมูลจะไม่รับการแก้ไขจนกว่าจะปลดล็อก)</span><button className="btn p" onClick={() => { upd({ details_locked: true }, 'ยืนยันรายละเอียดแล้ว'); window.scrollTo(0, 0); }}>ยืนยันรายละเอียด</button></>}
+          : <><span className="grow mut" style={{ fontSize: 13 }}>ตรวจข้อมูลให้ครบแล้วกดยืนยัน ระบบจะล็อกหน้านี้ (ฐานข้อมูลจะไม่รับการแก้ไขจนกว่าจะปลดล็อก)</span><button className="btn p" onClick={e => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); celebrate(r.left + r.width / 2, r.top); upd({ details_locked: true }, 'ยืนยันรายละเอียดแล้ว'); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 500); }}>ยืนยันรายละเอียด</button></>}
       </section>
     </div>
   );

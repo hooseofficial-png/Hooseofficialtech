@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { sb } from '@/lib/supabase/client';
 import InviteBox from '@/components/InviteBox';
 import { POSITIONS, POSITION_TH } from '@/lib/domain';
-import { toast, errText } from '@/lib/ui';
+import { toast, errText, celebrate } from '@/lib/ui';
 import { currentUser } from '@/lib/me';
 
 const POS_DESC: Record<string, string> = {
@@ -43,7 +43,9 @@ export default function Welcome() {
 
   const go = (n: number) => { setDir(n > step ? 1 : -1); setStep(n); };
   async function finish() {
+    celebrate();
     await sb().from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', uid);
+    await new Promise(r => setTimeout(r, 700));
     window.location.href = next !== '/' ? next : projectId ? `/?tour=1` : '/?tour=1';
   }
   async function nextStep() {

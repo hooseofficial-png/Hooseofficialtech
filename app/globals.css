@@ -371,3 +371,77 @@ html{scroll-behavior:smooth}
 .typed{font:600 16px var(--f-display);color:var(--ink);white-space:nowrap;overflow:hidden;display:inline-flex;align-items:center}
 .caret{display:inline-block;width:2px;height:18px;margin-left:2px;background:var(--blue);animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+
+/* =========================================================
+   Motion layer v3 — page transitions & micro-interactions
+   ========================================================= */
+/* route + tab transitions */
+@keyframes routeFade{from{opacity:0}to{opacity:1}}
+.route-fade{animation:routeFade .28s var(--ease) both}
+@keyframes pageIn{from{opacity:0;transform:translateY(14px) scale(.995);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}
+.page-enter{animation:pageIn .42s var(--ease) both}
+.page-enter>.grid>*{animation:fadeUp .45s var(--ease) both}
+.page-enter>.grid>*:nth-child(2){animation-delay:.05s}.page-enter>.grid>*:nth-child(3){animation-delay:.1s}.page-enter>.grid>*:nth-child(4){animation-delay:.15s}.page-enter>.grid>*:nth-child(5){animation-delay:.2s}.page-enter>.grid>*:nth-child(n+6){animation-delay:.24s}
+
+/* top navigation progress bar */
+.navbar{position:fixed;left:0;right:0;top:0;height:3px;z-index:300;pointer-events:none}
+.navbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),#6A62FF);box-shadow:0 0 10px rgba(13,0,255,.6),0 0 4px rgba(13,0,255,.5);border-radius:0 2px 2px 0;opacity:0}
+.navbar.go i{opacity:1;animation:navGo 8s cubic-bezier(.1,.7,.1,1) forwards}
+.navbar.done i{opacity:0;width:100%!important;transition:width .2s var(--ease),opacity .35s .15s}
+@keyframes navGo{0%{width:0}10%{width:35%}40%{width:65%}100%{width:92%}}
+
+/* sliding tab underline */
+.tabs .in{position:relative}
+.tab.on{border-bottom-color:transparent}
+.tab-ink{position:absolute;left:0;bottom:0;height:2.5px;border-radius:2px 2px 0 0;background:var(--blue);transition:transform .38s var(--ease-spring),width .38s var(--ease-spring);pointer-events:none}
+.tab{position:relative;overflow:hidden;border-radius:8px 8px 0 0}
+.tab:hover{background:var(--soft)}
+
+/* ripple */
+.btn{position:relative;overflow:hidden;isolation:isolate}
+.ripple{position:absolute;border-radius:50%;background:currentColor;opacity:.18;transform:scale(0);animation:ripple .6s var(--ease) forwards;pointer-events:none;z-index:-1}
+.btn.p .ripple,.tour-cta .ripple{background:#fff;opacity:.35}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
+
+/* card spotlight (mouse only) */
+.card{position:relative}
+.card::after,.pos-card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s var(--ease);background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%),rgba(13,0,255,.07),transparent 45%)}
+.card.lit::after,.pos-card.lit::after{opacity:1}
+.hero::after{background:radial-gradient(380px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.18),transparent 50%)}
+.card:hover{border-color:#DEDEE8}
+
+/* progress bars grow in */
+.bar>i{transition:width .8s var(--ease),background-color .3s;transform-origin:left;animation:grow .9s var(--ease) both}
+
+/* toast with countdown line */
+#toast{overflow:hidden}
+#toast.on::after{content:'';position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--blue-3);transform-origin:left;animation:toastLife 2.8s linear forwards}
+@keyframes toastLife{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+
+/* confetti */
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:400}
+.confetti i{position:absolute;width:8px;height:12px;border-radius:2px;animation:confetti 1.2s cubic-bezier(.15,.7,.3,1) forwards}
+@keyframes confetti{0%{transform:translate(0,0) rotate(0) scale(.6);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx),calc(var(--dy) + 140px)) rotate(var(--r)) scale(1);opacity:0}}
+
+/* lists, chips, avatars, logo */
+.list .li{position:relative;transition:background-color .15s,transform .2s var(--ease)}
+.list .li::before{content:'';position:absolute;left:-2px;top:20%;bottom:20%;width:3px;border-radius:2px;background:var(--blue);transform:scaleY(0);transition:transform .25s var(--ease)}
+.list .li:hover::before{transform:scaleY(1)}
+.list .li:hover{transform:translateX(2px)}
+.chip:hover{transform:translateY(-1px)}
+.av{transition:transform .25s var(--ease-spring),box-shadow .2s}
+.av:hover{transform:scale(1.08);box-shadow:0 0 0 3px var(--blue-bg)}
+.logo img{transition:transform .35s var(--ease-spring)}
+.logo:hover img{transform:scale(1.04) rotate(-1.5deg)}
+.top{transition:box-shadow .25s}
+.cal .d:not(.x):hover{border-color:var(--blue-3);background:#FBFBFF}
+.ev{transition:transform .15s var(--ease)}
+.tbl tbody tr{transition:background-color .15s}
+.tbl tbody tr:hover{background:#FAFAFD}
+input[type=checkbox]{transition:transform .2s var(--ease-spring)}
+input[type=checkbox]:checked{animation:popIn .25s var(--ease-spring)}
+a,.link-btn{transition:color .15s,opacity .15s}
+.num{font-variant-numeric:tabular-nums}
+/* focus ring that feels deliberate */
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;transition:outline-offset .15s}
+.btn:focus-visible{outline-offset:3px}
