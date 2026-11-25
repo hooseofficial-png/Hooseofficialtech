@@ -6,6 +6,7 @@ import TopBar from '@/components/TopBar';
 import Modal from '@/components/Modal';
 import { MonthGrid, MonthNav, Legend } from '@/components/Calendar';
 import CalendarSync from '@/components/CalendarSync';
+import WelcomeTour from '@/components/WelcomeTour';
 import { sb, BUCKET } from '@/lib/supabase/client';
 import { loadFull } from '@/components/ProjectProvider';
 import { dateRange, docOk, evKey, evLabel, firstShoot, fmtS, hm, ini, readyPct, todayISO, type HEvent, type ProjectData, type Project, type Role } from '@/lib/domain';
@@ -22,14 +23,21 @@ export default function Overview() {
   const [items, setItems] = useState<Item[] | null>(null);
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [del, setDel] = useState<Item | null>(null);
+  const [tour, setTour] = useState(false); const [me, setMe] = useState<{ id: string; name: string } | null>(null);
   const load = useCallback(async () => {
     const { data: u } = await sb().auth.getUser(); if (!u.user) return;
+    const { data: prof } = await sb().from('profiles').select('full_name, onboarded_at, tour_done_at').eq('id', u.user.id).maybeSingle();
+    if (prof && !prof.onboarded_at) { router.replace('/welcome'); return; }
+    setMe({ id: u.user.id, name: prof?.full_name || '' });
+    if (prof && (!prof.tour_done_at || new URLSearchParams(window.location.search).get('tour'))) setTour(true);
+    if (window.location.search.includes('tour')) window.history.replaceState(null, '', '/');
     const { data } = await sb().from('project_members').select('role, projects(*)').eq('user_id', u.user.id);
     const rows = (data || []).filter((r: any) => r.projects) as unknown as { role: Role; projects: Project }[];
     const full = await Promise.all(rows.map(r => (r.role === 'viewer' ? Promise.resolve(null) : loadFull(r.projects.id))));
     setItems(rows.map((r, i) => ({ role: r.role, project: r.projects, full: full[i] })));
-  }, []);
+  }, [router]);
   useEffect(() => { load(); }, [load]);
+  async function closeTour() { setTour(false); if (me) await sb().from('profiles').update({ tour_done_at: new Date().toISOString() }).eq('id', me.id); }
 
   async function create() {
     const { data: u } = await sb().auth.getUser();
@@ -62,7 +70,8 @@ export default function Overview() {
     <>
       <TopBar />
       <main className="wrap">
-        <div className="between"><h1>ภาพรวม</h1><button className="btn p" onClick={create}>+ โปรเจกต์ใหม่</button></div>
+        <div className="between"><h1>ภาพรวม</h1><div className="row">{!tour && <button className="btn ghost" onClick={() => setTour(true)}>คู่มือการใช้งาน</button>}<button className="btn p" onClick={create}>+ โปรเจกต์ใหม่</button></div></div>
+        {tour && <WelcomeTour name={me?.name} onClose={closeTour} onCreate={create} />}
         {items === null ? <><div className="skel" /><div className="skel" /></> : <>
           <div className="grid">{stats.map(([l, v]) => <div key={l} className="card c3" style={{ gap: 4 }}><span className="cap">{l}</span><b className="num" style={{ font: '600 28px/1.1 var(--f-display)' }}>{v}</b></div>)}</div>
           <CalendarSync variant="card" />

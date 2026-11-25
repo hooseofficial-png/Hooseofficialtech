@@ -1,126 +1,188 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sb } from '@/lib/supabase/client';
-import { POSITIONS } from '@/lib/domain';
 
-type Mode = 'password' | 'signup' | 'link';
+type Screen = 'signin' | 'signup' | 'verify' | 'forgot' | 'sent';
+const CODE_LEN = 6;
 
 const th = (m: string) =>
   /invalid login/i.test(m) ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
-  : /email not confirmed/i.test(m) ? 'ยังไม่ได้ยืนยันอีเมล เปิดอีเมลยืนยันแล้วกดลิงก์ก่อน หรือกด “ส่งอีเมลยืนยันอีกครั้ง”'
-  : /already registered|already exists/i.test(m) ? 'อีเมลนี้สมัครไว้แล้ว ไปที่แท็บ “เข้าสู่ระบบ” ได้เลย'
-  : /rate limit/i.test(m) ? 'ส่งอีเมลเกินจำนวนที่ระบบอนุญาตต่อชั่วโมง รอสักครู่แล้วลองใหม่'
+  : /already registered|already exists/i.test(m) ? 'อีเมลนี้สมัครไว้แล้ว เข้าสู่ระบบได้เลย'
+  : /rate limit|too many/i.test(m) ? 'ส่งอีเมลถี่เกินไป รอสักครู่แล้วลองใหม่'
+  : /expired|invalid.*(token|otp)|token.*invalid/i.test(m) ? 'รหัสไม่ถูกต้องหรือหมดอายุ กด “ส่งรหัสอีกครั้ง”'
   : /password/i.test(m) && /least|short|weak/i.test(m) ? 'รหัสผ่านสั้นหรือเดาง่ายเกินไป ใช้อย่างน้อย 8 ตัวอักษร'
+  : /signups not allowed|user not found/i.test(m) ? 'ยังไม่มีบัญชีด้วยอีเมลนี้ สมัครสมาชิกก่อน'
   : m;
 
+function GoogleIcon() {
+  return <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h11.8c-.5 2.7-2.1 5-4.4 6.6v5.5h7.1c4.2-3.8 6.6-9.5 6.6-16.1z"/><path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.6-3.8-12.3-9H4.4v5.7C8 41.1 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.7 28.3c-.4-1.3-.7-2.8-.7-4.3s.3-3 .7-4.3V14H4.4C2.9 17 2 20.4 2 24s.9 7 2.4 10l7.3-5.7z"/><path fill="#EA4335" d="M24 10.7c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.1 29.9 2 24 2 15.4 2 8 6.9 4.4 14l7.3 5.7c1.7-5.2 6.6-9 12.3-9z"/></svg>;
+}
+function Eye({ on }: { on: boolean }) {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>{!on && <path d="M3 3l18 18"/>}</svg>;
+}
+
+function CodeInput({ value, onChange, onComplete }: { value: string; onChange: (v: string) => void; onComplete: (v: string) => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  useEffect(() => { refs.current[0]?.focus(); }, []);
+  const set = (v: string) => { const d = v.replace(/\D/g, '').slice(0, CODE_LEN); onChange(d); if (d.length === CODE_LEN) onComplete(d); return d; };
+  return (
+    <div className="otp" role="group" aria-label={`รหัสยืนยัน ${CODE_LEN} หลัก`}>
+      {Array.from({ length: CODE_LEN }, (_, i) => (
+        <input key={i} ref={el => { refs.current[i] = el; }} inputMode="numeric" autoComplete={i === 0 ? 'one-time-code' : 'off'}
+          className={value[i] ? 'on' : ''} value={value[i] || ''} aria-label={`หลักที่ ${i + 1}`}
+          onFocus={e => e.target.select()}
+          onChange={e => {
+            const d = e.target.value.replace(/\D/g, '');
+            if (!d) { set(value.slice(0, i) + value.slice(i + 1)); return; }
+            const digits = d.length > 1 && value[i] && d.length === 2 ? d.replace(value[i], '') || d[0] : d;
+            const nv = set(value.slice(0, i) + digits + value.slice(i + digits.length));
+            refs.current[Math.min(i + digits.length, CODE_LEN - 1, nv.length)]?.focus();
+          }}
+          onKeyDown={e => { if (e.key === 'Backspace' && !value[i] && i > 0) refs.current[i - 1]?.focus(); if (e.key === 'ArrowLeft' && i > 0) refs.current[i - 1]?.focus(); if (e.key === 'ArrowRight' && i < CODE_LEN - 1) refs.current[i + 1]?.focus(); }}
+          onPaste={e => { e.preventDefault(); const d = set(e.clipboardData.getData('text')); refs.current[Math.min(d.length, CODE_LEN - 1)]?.focus(); }} />
+      ))}
+    </div>
+  );
+}
+
 export default function Login() {
-  const [mode, setMode] = useState<Mode>('password');
+  const [screen, setScreen] = useState<Screen>('signin');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [password2, setPassword2] = useState('');
-  const [prof, setProf] = useState({ full_name: '', position: '', company: '', phone: '' });
-  const [state, setState] = useState<'idle' | 'busy' | 'sent' | 'confirm' | 'error'>('idle');
+  const [show, setShow] = useState(false);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const next = () => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('next')) || '/';
+  const [cool, setCool] = useState(0);
+  const [next, setNext] = useState('/');
+  const googleOn = process.env.NEXT_PUBLIC_GOOGLE_LOGIN === '1';
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('next')?.startsWith('/')) setNext(q.get('next')!);
+    if (q.get('email')) setEmail(q.get('email')!);
+    if (q.get('mode') === 'signup') setScreen('signup');
+  }, []);
+  useEffect(() => { if (cool <= 0) return; const t = setTimeout(() => setCool(cool - 1), 1000); return () => clearTimeout(t); }, [cool]);
+
   const site = () => process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
   const em = () => email.trim().toLowerCase();
-  const fail = (m: string) => { setState('error'); setMsg(th(m)); };
+  const go = (s: Screen) => { setScreen(s); setMsg(''); setCode(''); };
+  const callback = (to: string) => site() + '/auth/callback?next=' + encodeURIComponent(to);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setState('busy'); setMsg('');
-    if (mode === 'password') {
-      const { error } = await sb().auth.signInWithPassword({ email: em(), password });
-      if (error) return fail(error.message);
-      window.location.href = next(); return;
+  async function signin(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setMsg('');
+    const { error } = await sb().auth.signInWithPassword({ email: em(), password });
+    setBusy(false);
+    if (error) {
+      if (/email not confirmed/i.test(error.message)) { await resend(); go('verify'); return; }
+      setMsg(th(error.message)); return;
     }
-    if (mode === 'signup') {
-      if (!prof.full_name.trim()) return fail('กรอกชื่อ-นามสกุล');
-      if (!prof.position) return fail('เลือกตำแหน่ง');
-      if (!prof.company.trim()) return fail('กรอกชื่อบริษัท');
-      if (password.length < 8) return fail('รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร');
-      if (password !== password2) return fail('รหัสผ่านสองช่องไม่ตรงกัน');
-      const { data, error } = await sb().auth.signUp({
-        email: em(), password,
-        options: {
-          emailRedirectTo: site() + '/auth/callback?next=' + encodeURIComponent('/account?welcome=1'),
-          data: { full_name: prof.full_name.trim(), position: prof.position, company: prof.company.trim(), phone: prof.phone.trim() }
-        }
-      });
-      if (error) return fail(error.message);
-      // Supabase returns a user with no identities when the e-mail is already registered.
-      if (data.user && data.user.identities && data.user.identities.length === 0) return fail('already registered');
-      if (data.session) { window.location.href = '/account?welcome=1'; return; }
-      setState('confirm'); return;
-    }
-    const { error } = await sb().auth.signInWithOtp({ email: em(), options: { shouldCreateUser: false, emailRedirectTo: site() + '/auth/callback?next=' + encodeURIComponent(next()) } });
-    if (error) return fail(/signups not allowed|not found/i.test(error.message) ? 'ยังไม่มีบัญชีด้วยอีเมลนี้ ไปที่แท็บ “สมัครสมาชิก” ก่อน' : error.message);
-    setState('sent');
+    window.location.href = next;
   }
-
+  async function signup(e: React.FormEvent) {
+    e.preventDefault(); setMsg('');
+    if (password.length < 8) { setMsg('รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร'); return; }
+    setBusy(true);
+    const { data, error } = await sb().auth.signUp({ email: em(), password, options: { emailRedirectTo: callback('/welcome?next=' + encodeURIComponent(next)), data: { full_name: name.trim() } } });
+    setBusy(false);
+    if (error) { setMsg(th(error.message)); return; }
+    if (data.user && data.user.identities && data.user.identities.length === 0) { setMsg(th('already registered')); return; }
+    if (data.session) { window.location.href = '/welcome?next=' + encodeURIComponent(next); return; }
+    setCool(60); go('verify');
+  }
+  async function verify(token = code) {
+    if (token.length !== CODE_LEN) return;
+    setBusy(true); setMsg('');
+    const { error } = await sb().auth.verifyOtp({ email: em(), token, type: 'signup' });
+    if (error) { const r = await sb().auth.verifyOtp({ email: em(), token, type: 'email' }); if (r.error) { setBusy(false); setMsg(th(error.message)); setCode(''); return; } }
+    window.location.href = '/welcome?next=' + encodeURIComponent(next);
+  }
   async function resend() {
-    setState('busy');
-    const { error } = await sb().auth.resend({ type: 'signup', email: em(), options: { emailRedirectTo: site() + '/auth/callback?next=' + encodeURIComponent('/account?welcome=1') } });
-    if (error) fail(error.message); else setState('confirm');
+    if (cool > 0) return;
+    const { error } = await sb().auth.resend({ type: 'signup', email: em(), options: { emailRedirectTo: callback('/welcome?next=' + encodeURIComponent(next)) } });
+    if (error) setMsg(th(error.message)); else { setCool(60); setMsg(''); }
+  }
+  async function forgot(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setMsg('');
+    const { error } = await sb().auth.signInWithOtp({ email: em(), options: { shouldCreateUser: false, emailRedirectTo: callback('/account?reset=1') } });
+    setBusy(false);
+    if (error) setMsg(th(error.message)); else go('sent');
+  }
+  async function google() {
+    setBusy(true);
+    const { error } = await sb().auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callback(next) } });
+    if (error) { setBusy(false); setMsg(th(error.message)); }
   }
 
-  const tab = (m: Mode, label: string) => <button type="button" className={mode === m ? 'on' : ''} onClick={() => { setMode(m); setState('idle'); setMsg(''); }}>{label}</button>;
+  const GoogleBtn = googleOn ? <>
+    <button type="button" className="btn g-btn" onClick={google} disabled={busy}><GoogleIcon />ดำเนินการต่อด้วย Google</button>
+    <div className="or"><span>หรือ</span></div>
+  </> : null;
+  const pwField = (auto: string) => (
+    <div className="pw-wrap">
+      <input className="in-t" type={show ? 'text' : 'password'} required minLength={screen === 'signup' ? 8 : undefined} autoComplete={auto} value={password} onChange={e => setPassword(e.target.value)} placeholder={screen === 'signup' ? 'ตั้งรหัสผ่าน (อย่างน้อย 8 ตัว)' : 'รหัสผ่าน'} aria-label="รหัสผ่าน" />
+      <button type="button" className="eye" onClick={() => setShow(!show)} aria-label={show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}><Eye on={show} /></button>
+    </div>
+  );
+  const err = msg && <div className="err" role="alert">{msg}</div>;
+  const signupValid = name.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em()) && password.length >= 8;
 
   return (
-    <main className="login">
-      <form className="card" onSubmit={submit}>
-        <img src="/hoose-logo.png" alt="HOOSE" style={{ height: 44, alignSelf: 'flex-start' }} />
-        <h1>{mode === 'signup' ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ'}</h1>
-        <div className="seg" role="tablist" aria-label="เข้าสู่ระบบหรือสมัคร">
-          {tab('password', 'เข้าสู่ระบบ')}{tab('signup', 'สมัครสมาชิก')}{tab('link', 'ลิงก์ทางอีเมล')}
-        </div>
-        {state === 'confirm' ? (
-          <>
-            <p>สมัครเรียบร้อย ส่งอีเมลยืนยันไปที่ <b>{email}</b> แล้ว เปิดอีเมลแล้วกด <b>Confirm</b> เพื่อเปิดใช้งานบัญชี จากนั้นเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้</p>
-            <p className="mut" style={{ fontSize: 12, margin: 0 }}>ไม่เจออีเมล? ดูในโฟลเดอร์ Spam หรือ <button type="button" className="link-btn" onClick={resend}>ส่งอีเมลยืนยันอีกครั้ง</button></p>
-            <button type="button" className="btn" onClick={() => { setMode('password'); setState('idle'); }}>ไปหน้าเข้าสู่ระบบ</button>
-          </>
-        ) : state === 'sent' ? (
-          <p>ส่งลิงก์เข้าสู่ระบบไปที่ <b>{email}</b> แล้ว เปิดอีเมลแล้วกดลิงก์ (ลิงก์ใช้ได้ครั้งเดียว ถ้าไม่เจอให้ดูในโฟลเดอร์ Spam)</p>
-        ) : (
-          <>
-            {mode === 'signup' && (
-              <>
-                <label className="f" htmlFor="su-name">ชื่อ-นามสกุล<input className="in-t" id="su-name" required autoComplete="name" value={prof.full_name} onChange={e => setProf({ ...prof, full_name: e.target.value })} /></label>
-                <label className="f" htmlFor="su-pos">ตำแหน่ง
-                  <select className="in-t" id="su-pos" required value={prof.position} onChange={e => setProf({ ...prof, position: e.target.value })}>
-                    <option value="" disabled>เลือกตำแหน่ง</option>
-                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </label>
-                <label className="f" htmlFor="su-co">บริษัท / สังกัด<input className="in-t" id="su-co" required autoComplete="organization" value={prof.company} onChange={e => setProf({ ...prof, company: e.target.value })} placeholder="เช่น HOOSE Production Co., Ltd." /></label>
-                <label className="f" htmlFor="su-ph">เบอร์โทร (ไม่บังคับ)<input className="in-t" id="su-ph" type="tel" autoComplete="tel" value={prof.phone} onChange={e => setProf({ ...prof, phone: e.target.value })} /></label>
-              </>
-            )}
-            <label className="f" htmlFor="email">อีเมล
-              <input className="in-t" id="email" type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
-            </label>
-            {mode !== 'link' && (
-              <label className="f" htmlFor="pw">{mode === 'signup' ? 'ตั้งรหัสผ่าน (อย่างน้อย 8 ตัวอักษร)' : 'รหัสผ่าน'}
-                <input className="in-t" id="pw" type="password" required minLength={mode === 'signup' ? 8 : undefined} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} />
-              </label>
-            )}
-            {mode === 'signup' && (
-              <label className="f" htmlFor="pw2">ยืนยันรหัสผ่าน
-                <input className="in-t" id="pw2" type="password" required autoComplete="new-password" value={password2} onChange={e => setPassword2(e.target.value)} />
-              </label>
-            )}
-            {state === 'error' && <div className="err" role="alert">{msg}{/ยืนยันอีเมล/.test(msg) && <> · <button type="button" className="link-btn" onClick={resend}>ส่งอีเมลยืนยันอีกครั้ง</button></>}</div>}
-            <button className="btn p" disabled={state === 'busy'}>
-              {state === 'busy' ? 'กำลังดำเนินการ…' : mode === 'password' ? 'เข้าสู่ระบบ' : mode === 'signup' ? 'สมัครสมาชิก' : 'ส่งลิงก์เข้าสู่ระบบทางอีเมล'}
-            </button>
-            <p className="mut" style={{ fontSize: 12, margin: 0 }}>
-              {mode === 'password' ? <>ใช้งานครั้งแรก? <button type="button" className="link-btn" onClick={() => { setMode('signup'); setState('idle'); }}>สมัครสมาชิก</button> ตั้งรหัสผ่านเอง แล้วยืนยันทางอีเมล</>
-                : mode === 'signup' ? 'หลังกดสมัคร ระบบจะส่งอีเมลยืนยัน ต้องกดยืนยันก่อนจึงเข้าสู่ระบบได้ · คนที่ถูกเชิญเข้าโปรเจกต์จะเห็นโปรเจกต์นั้นทันที'
-                : 'สำหรับบัญชีที่สมัครแล้ว ใช้ได้เมื่อลืมรหัสผ่าน แล้วไปตั้งใหม่ที่ “บัญชีของฉัน”'}
-            </p>
-          </>
-        )}
-      </form>
+    <main className="auth">
+      <div className="auth-glow" aria-hidden="true" />
+      <div className="auth-box" key={screen}>
+        <img src="/hoose-logo.png" alt="HOOSE" className="auth-logo" />
+
+        {screen === 'signin' && <form onSubmit={signin} className="auth-form">
+          <h1>ยินดีต้อนรับกลับ</h1>
+          <p className="auth-sub">ยังไม่มีบัญชี? <button type="button" className="link-btn" onClick={() => go('signup')}>สมัครสมาชิก</button></p>
+          {GoogleBtn}
+          <input className="in-t" type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="อีเมลที่ทำงาน" aria-label="อีเมล" />
+          {pwField('current-password')}
+          {err}
+          <button className="btn p lg" disabled={busy}>{busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}</button>
+          <button type="button" className="link-btn sm" onClick={() => go('forgot')}>ลืมรหัสผ่าน?</button>
+        </form>}
+
+        {screen === 'signup' && <form onSubmit={signup} className="auth-form">
+          <h1>สมัครใช้งานในไม่กี่วินาที</h1>
+          <p className="auth-sub">มีบัญชีแล้ว? <button type="button" className="link-btn" onClick={() => go('signin')}>เข้าสู่ระบบ</button></p>
+          {GoogleBtn}
+          <input className="in-t" required autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อ-นามสกุล" aria-label="ชื่อ-นามสกุล" autoFocus />
+          <input className="in-t" type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="อีเมลที่ทำงาน" aria-label="อีเมล" />
+          {pwField('new-password')}
+          {err}
+          <button className="btn p lg" disabled={busy || !signupValid}>{busy ? 'กำลังสมัคร…' : 'สมัครด้วยอีเมล'}</button>
+          <p className="auth-fine">ขั้นต่อไป: ยืนยันอีเมลด้วยรหัส 6 หลัก แล้วตั้งค่าตำแหน่งและทีมของคุณ</p>
+        </form>}
+
+        {screen === 'verify' && <div className="auth-form">
+          <h1>ยืนยันอีเมลของคุณ</h1>
+          <CodeInput value={code} onChange={setCode} onComplete={v => verify(v)} />
+          <p className="auth-sub" style={{ margin: 0 }}>กรอกรหัสที่ส่งไปที่<br /><b style={{ color: 'var(--ink)' }}>{email}</b></p>
+          {err}
+          <button className="btn k lg" onClick={() => verify()} disabled={busy || code.length !== CODE_LEN}>{busy ? 'กำลังยืนยัน…' : 'ยืนยัน'}</button>
+          <p className="auth-sub">ไม่ได้รับรหัส? {cool > 0 ? <span className="mut">ส่งอีกครั้งได้ใน {cool} วินาที</span> : <button type="button" className="link-btn" onClick={resend}>ส่งรหัสอีกครั้ง</button>} หรือ <button type="button" className="link-btn" onClick={() => go('signup')}>เปลี่ยนอีเมล</button></p>
+          <p className="auth-fine">ยังไม่ได้? ดูในโฟลเดอร์ Spam / Promotions · หรือกดปุ่มยืนยันในอีเมลก็ได้</p>
+        </div>}
+
+        {screen === 'forgot' && <form onSubmit={forgot} className="auth-form">
+          <h1>ลืมรหัสผ่าน</h1>
+          <p className="auth-sub">เราจะส่งลิงก์เข้าสู่ระบบไปที่อีเมล แล้วตั้งรหัสผ่านใหม่ที่ “บัญชีของฉัน”</p>
+          <input className="in-t" type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="อีเมล" aria-label="อีเมล" autoFocus />
+          {err}
+          <button className="btn p lg" disabled={busy}>{busy ? 'กำลังส่ง…' : 'ส่งลิงก์เข้าสู่ระบบ'}</button>
+          <button type="button" className="link-btn sm" onClick={() => go('signin')}>กลับไปหน้าเข้าสู่ระบบ</button>
+        </form>}
+
+        {screen === 'sent' && <div className="auth-form">
+          <h1>เช็กอีเมลของคุณ</h1>
+          <p className="auth-sub">ส่งลิงก์ไปที่ <b style={{ color: 'var(--ink)' }}>{email}</b> แล้ว กดลิงก์ในอีเมลเพื่อเข้าสู่ระบบ (ใช้ได้ครั้งเดียว)</p>
+          <button type="button" className="btn lg" onClick={() => go('signin')}>กลับไปหน้าเข้าสู่ระบบ</button>
+        </div>}
+      </div>
     </main>
   );
 }

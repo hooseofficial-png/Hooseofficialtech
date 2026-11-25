@@ -20,7 +20,7 @@ export default function Account() {
   const [banner, setBanner] = useState('');
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    const g = q.get('google'); const msg = (g && GOOGLE_MSG[g]) || (q.get('welcome') ? 'ยืนยันอีเมลเรียบร้อย ยินดีต้อนรับสู่ HOOSE' : '');
+    const g = q.get('google'); const msg = (g && GOOGLE_MSG[g]) || (q.get('welcome') ? 'ยืนยันอีเมลเรียบร้อย ยินดีต้อนรับสู่ HOOSE' : q.get('reset') ? 'เข้าสู่ระบบแล้ว · ตั้งรหัสผ่านใหม่ในช่อง “รหัสผ่าน” ด้านล่าง' : '');
     if (msg) { setBanner(msg); toast(msg); window.history.replaceState(null, '', '/account'); }
     sb().auth.getUser().then(async ({ data }) => {
       if (!data.user) return; setUid(data.user.id);
