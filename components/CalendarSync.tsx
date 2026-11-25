@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
 import { sb } from '@/lib/supabase/client';
 import { copyText, toast, errText } from '@/lib/ui';
+import { currentUser } from '@/lib/me';
 
 type Conn = { google_email: string; connected_at: string } | null;
 
@@ -23,9 +24,9 @@ export default function CalendarSync({ variant = 'button' }: { variant?: 'button
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
-    const { data } = await sb().auth.getUser(); if (!data.user) return; setUid(data.user.id);
+    const user = await currentUser(); if (!user) return; setUid(user.id);
     const [{ data: p }, { data: g }] = await Promise.all([
-      sb().from('profiles').select('calendar_token, calendar_feed_seen_at').eq('id', data.user.id).maybeSingle(),
+      sb().from('profiles').select('calendar_token, calendar_feed_seen_at').eq('id', user.id).maybeSingle(),
       sb().rpc('my_google_connection')
     ]);
     if (p?.calendar_token) setToken(p.calendar_token);

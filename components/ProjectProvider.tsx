@@ -3,10 +3,11 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { sb, BUCKET } from '@/lib/supabase/client';
 import { fromSummaryJson, type ProjectData, type Role, type DocCategory } from '@/lib/domain';
 import { toast, errText } from '@/lib/ui';
+import { getCache, setCache } from '@/lib/cache';
 
 interface Ctx {
   id: string; role: Role | null; data: ProjectData | null; loading: boolean; missing: boolean;
-  reload: () => Promise<void>;
+  reload: (checkRole?: boolean) => Promise<void>;
   /** Run a write, show an error toast if it fails, then reload. Returns true on success. */
   act: (fn: () => PromiseLike<{ error: unknown }>, ok?: string) => Promise<boolean>;
   upload: (file: File, folder: string) => Promise<{ path: string; name: string; size: number } | null>;
@@ -40,34 +41,39 @@ export async function loadFull(id: string): Promise<ProjectData | null> {
 }
 
 export default function ProjectProvider({ id, children }: { id: string; children: React.ReactNode }) {
-  const [role, setRole] = useState<Role | null>(null);
-  const [data, setData] = useState<ProjectData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Paint from cache instantly (filled by the overview or an earlier visit), then revalidate in the background.
+  const cached = typeof window !== 'undefined' ? getCache<{ role: Role; data: ProjectData }>('p:' + id) : undefined;
+  const [role, setRole] = useState<Role | null>(cached?.role ?? null);
+  const [data, setData] = useState<ProjectData | null>(cached?.data ?? null);
+  const [loading, setLoading] = useState(!cached);
   const [missing, setMissing] = useState(false);
   const urls = useRef<Record<string, string>>({});
+  const roleRef = useRef<Role | null>(cached?.role ?? null);
+  const lastWrite = useRef(0);
   const [, bump] = useState(0);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (checkRole = false) => {
     const s = sb();
-    const { data: r } = await s.rpc('my_role', { pid: id });
-    if (!r) { setMissing(true); setLoading(false); return; }
-    setRole(r as Role);
-    if (r === 'viewer') {
-      const { data: j } = await s.rpc('project_summary', { pid: id });
-      setData(j ? fromSummaryJson(j) : null); if (!j) setMissing(true);
-    } else {
-      const d = await loadFull(id); setData(d); if (!d) setMissing(true);
+    let r = roleRef.current;
+    if (!r || checkRole) {
+      const { data: rr } = await s.rpc('my_role', { pid: id });
+      if (!rr) { setMissing(true); setLoading(false); return; }
+      r = rr as Role; roleRef.current = r; setRole(r);
     }
-    setLoading(false);
+    let d: ProjectData | null;
+    if (r === 'viewer') { const { data: j } = await s.rpc('project_summary', { pid: id }); d = j ? fromSummaryJson(j) : null; }
+    else d = await loadFull(id);
+    setData(d); setMissing(!d); setLoading(false);
+    if (d) setCache('p:' + id, { role: r, data: d });
   }, [id]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { reload(true); }, [reload]);
 
   // Live updates: another teammate's change reloads this page's data.
   useEffect(() => {
     if (!role || role === 'viewer') return;
     let t: ReturnType<typeof setTimeout>;
-    const later = () => { clearTimeout(t); t = setTimeout(() => { if (!document.querySelector('input:focus,textarea:focus')) reload(); }, 600); };
+    const later = () => { if (Date.now() - lastWrite.current < 2500) return; clearTimeout(t); t = setTimeout(() => { if (!document.querySelector('input:focus,textarea:focus')) reload(); }, 600); };
     const ch = sb().channel('project-' + id);
     ['crew_positions', 'events', 'doc_categories', 'doc_files', 'budgets', 'budget_lines', 'announcements'].forEach(table =>
       ch.on('postgres_changes', { event: '*', schema: 'public', table, filter: 'project_id=eq.' + id }, later));
@@ -76,7 +82,9 @@ export default function ProjectProvider({ id, children }: { id: string; children
   }, [role, id, reload]);
 
   const act = useCallback(async (fn: () => PromiseLike<{ error: unknown }>, ok?: string) => {
+    lastWrite.current = Date.now();
     const { error } = await fn();
+    lastWrite.current = Date.now();
     if (error) { toast(errText(error)); await reload(); return false; }
     if (ok) toast(ok);
     await reload(); return true;

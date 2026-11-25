@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { sb } from '@/lib/supabase/client';
+import { clearCache } from '@/lib/cache';
 
 type Screen = 'signin' | 'signup' | 'verify' | 'forgot' | 'sent';
 const CODE_LEN = 6;
@@ -59,6 +60,7 @@ export default function Login() {
   const googleOn = process.env.NEXT_PUBLIC_GOOGLE_LOGIN === '1';
 
   useEffect(() => {
+    clearCache(); // never show a previous account's cached data
     const q = new URLSearchParams(window.location.search);
     if (q.get('next')?.startsWith('/')) setNext(q.get('next')!);
     if (q.get('email')) setEmail(q.get('email')!);

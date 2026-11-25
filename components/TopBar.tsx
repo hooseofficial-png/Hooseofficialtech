@@ -1,20 +1,17 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { sb } from '@/lib/supabase/client';
+import { getMe, cachedMe, signOut } from '@/lib/me';
 import { ini } from '@/lib/domain';
 
 export default function TopBar({ label = 'Production Management' }: { label?: string }) {
   const [me, setMe] = useState<{ email: string; name: string; position: string } | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    sb().auth.getUser().then(async ({ data }) => {
-      if (!data.user) return;
-      const { data: p } = await sb().from('profiles').select('full_name,email,position').eq('id', data.user.id).maybeSingle();
-      setMe({ email: data.user.email || '', name: (p && p.full_name) || '', position: (p && p.position) || '' });
-    });
+    const show = (m: ReturnType<typeof cachedMe> | null) => m && setMe({ email: m.email, name: m.profile?.full_name || '', position: m.profile?.position || '' });
+    show(cachedMe()); getMe().then(show);
   }, []);
-  async function out() { await sb().auth.signOut(); window.location.href = '/login'; }
+  const out = signOut;
   return (
     <header className="top"><div className="in">
       <Link href="/" className="logo" style={{ display: 'flex', alignItems: 'center' }} aria-label="HOOSE หน้าภาพรวม">

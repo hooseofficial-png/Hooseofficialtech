@@ -4,6 +4,7 @@ import { sb } from '@/lib/supabase/client';
 import InviteBox from '@/components/InviteBox';
 import { POSITIONS, POSITION_TH } from '@/lib/domain';
 import { toast, errText } from '@/lib/ui';
+import { currentUser } from '@/lib/me';
 
 const POS_DESC: Record<string, string> = {
   Director: 'ดูแลภาพรวมความคิดสร้างสรรค์ Treatment และการถ่ายทำ',
@@ -32,10 +33,10 @@ export default function Welcome() {
 
   useEffect(() => {
     const n = new URLSearchParams(window.location.search).get('next'); if (n?.startsWith('/') && n !== '/') setNext(n);
-    sb().auth.getUser().then(async ({ data }) => {
-      if (!data.user) { window.location.href = '/login'; return; }
-      setUid(data.user.id);
-      const { data: p } = await sb().from('profiles').select('full_name, position, company, phone').eq('id', data.user.id).maybeSingle();
+    currentUser().then(async (user) => {
+      if (!user) { window.location.href = '/login'; return; }
+      setUid(user.id);
+      const { data: p } = await sb().from('profiles').select('full_name, position, company, phone').eq('id', user.id).maybeSingle();
       if (p) { setName(p.full_name || ''); setPos(p.position || ''); setCompany(p.company || ''); setPhone(p.phone || ''); }
     });
   }, []);

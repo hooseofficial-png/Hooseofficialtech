@@ -7,6 +7,8 @@ import Modal from '@/components/Modal';
 import { MonthGrid, MonthNav, Legend } from '@/components/Calendar';
 import CalendarSync from '@/components/CalendarSync';
 import WelcomeTour from '@/components/WelcomeTour';
+import { getMe } from '@/lib/me';
+import { getCache, setCache } from '@/lib/cache';
 import { sb, BUCKET } from '@/lib/supabase/client';
 import { loadFull } from '@/components/ProjectProvider';
 import { dateRange, docOk, evKey, evLabel, firstShoot, fmtS, hm, ini, readyPct, todayISO, type HEvent, type ProjectData, type Project, type Role } from '@/lib/domain';
@@ -20,28 +22,30 @@ function Meter({ label, val, r }: { label: string; val: string; r: number }) {
 
 export default function Overview() {
   const router = useRouter();
-  const [items, setItems] = useState<Item[] | null>(null);
+  const [items, setItems] = useState<Item[] | null>(() => (typeof window !== 'undefined' ? getCache<Item[]>('home') ?? null : null));
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [del, setDel] = useState<Item | null>(null);
   const [tour, setTour] = useState(false); const [me, setMe] = useState<{ id: string; name: string } | null>(null);
   const load = useCallback(async () => {
-    const { data: u } = await sb().auth.getUser(); if (!u.user) return;
-    const { data: prof } = await sb().from('profiles').select('full_name, onboarded_at, tour_done_at').eq('id', u.user.id).maybeSingle();
+    const me = await getMe(); if (!me) return;
+    const prof = me.profile;
     if (prof && !prof.onboarded_at) { router.replace('/welcome'); return; }
-    setMe({ id: u.user.id, name: prof?.full_name || '' });
+    setMe({ id: me.id, name: prof?.full_name || '' });
     if (prof && (!prof.tour_done_at || new URLSearchParams(window.location.search).get('tour'))) setTour(true);
     if (window.location.search.includes('tour')) window.history.replaceState(null, '', '/');
-    const { data } = await sb().from('project_members').select('role, projects(*)').eq('user_id', u.user.id);
+    const { data } = await sb().from('project_members').select('role, projects(*)').eq('user_id', me.id);
     const rows = (data || []).filter((r: any) => r.projects) as unknown as { role: Role; projects: Project }[];
     const full = await Promise.all(rows.map(r => (r.role === 'viewer' ? Promise.resolve(null) : loadFull(r.projects.id))));
-    setItems(rows.map((r, i) => ({ role: r.role, project: r.projects, full: full[i] })));
+    const next = rows.map((r, i) => ({ role: r.role, project: r.projects, full: full[i] }));
+    setItems(next); setCache('home', next);
+    next.forEach(it => { if (it.full) setCache('p:' + it.project.id, { role: it.role, data: it.full }); });
   }, [router]);
   useEffect(() => { load(); }, [load]);
   async function closeTour() { setTour(false); if (me) await sb().from('profiles').update({ tour_done_at: new Date().toISOString() }).eq('id', me.id); }
 
   async function create() {
-    const { data: u } = await sb().auth.getUser();
-    const { data, error } = await sb().from('projects').insert({ name: '', created_by: u.user!.id }).select('id').single();
+    const me = await getMe();
+    const { data, error } = await sb().from('projects').insert({ name: '', created_by: me!.id }).select('id').single();
     if (error) { toast(errText(error)); return; }
     router.push(`/p/${data.id}/details`);
   }
@@ -81,7 +85,7 @@ export default function Overview() {
               const cf = d!.crew.filter(c => c.status === 'confirmed').length; const dn = d!.docs.filter(docOk).length;
               const nx = d!.events.filter(e => e.date && e.date >= t).sort((a, b) => evKey(a).localeCompare(evKey(b)))[0];
               return (
-                <article key={p.id} className="card pcard" onClick={() => router.push(`/p/${p.id}`)} onKeyDown={e => { if (e.key === 'Enter') router.push(`/p/${p.id}`); }} tabIndex={0} role="link" aria-label={'เปิด ' + (p.name || 'โปรเจกต์')}>
+                <article key={p.id} className="card pcard" onClick={() => router.push(`/p/${p.id}`)} onMouseEnter={() => router.prefetch(`/p/${p.id}`)} onKeyDown={e => { if (e.key === 'Enter') router.push(`/p/${p.id}`); }} tabIndex={0} role="link" aria-label={'เปิด ' + (p.name || 'โปรเจกต์')}>
                   <div className="row">
                     <span className="logo-box" style={{ width: 40, height: 40, background: 'var(--soft)' }}><b style={{ color: 'var(--blue)' }}>{ini(p.brand || p.name)}</b></span>
                     <div className="grow"><h2 className="ell">{p.name || 'โปรเจกต์ไม่มีชื่อ'}</h2><div className="mut ell" style={{ fontSize: 12 }}>{p.brand || 'ยังไม่ระบุลูกค้า'}</div></div>

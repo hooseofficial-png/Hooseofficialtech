@@ -5,6 +5,7 @@ import CalendarSync from '@/components/CalendarSync';
 import { sb } from '@/lib/supabase/client';
 import { POSITIONS, POSITION_TH } from '@/lib/domain';
 import { toast, errText } from '@/lib/ui';
+import { currentUser } from '@/lib/me';
 
 type Prof = { full_name: string; phone: string; line_id: string; email: string; position: string; company: string };
 const GOOGLE_MSG: Record<string, string> = {
@@ -22,9 +23,9 @@ export default function Account() {
     const q = new URLSearchParams(window.location.search);
     const g = q.get('google'); const msg = (g && GOOGLE_MSG[g]) || (q.get('welcome') ? 'ยืนยันอีเมลเรียบร้อย ยินดีต้อนรับสู่ HOOSE' : q.get('reset') ? 'เข้าสู่ระบบแล้ว · ตั้งรหัสผ่านใหม่ในช่อง “รหัสผ่าน” ด้านล่าง' : '');
     if (msg) { setBanner(msg); toast(msg); window.history.replaceState(null, '', '/account'); }
-    sb().auth.getUser().then(async ({ data }) => {
-      if (!data.user) return; setUid(data.user.id);
-      const { data: r } = await sb().from('profiles').select('full_name, phone, line_id, email, position, company').eq('id', data.user.id).maybeSingle();
+    currentUser().then(async (user) => {
+      if (!user) return; setUid(user.id);
+      const { data: r } = await sb().from('profiles').select('full_name, phone, line_id, email, position, company').eq('id', user.id).maybeSingle();
       if (r) setP(r as Prof);
     });
   }, []);

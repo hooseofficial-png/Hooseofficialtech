@@ -4,6 +4,9 @@ import { createServerClient } from '@supabase/ssr';
 const PUBLIC = [/^\/login/, /^\/auth\//, /^\/s\//, /^\/api\/share\//, /^\/api\/line\//, /^\/api\/calendar\//];
 
 export async function middleware(req: NextRequest) {
+  const path = req.nextUrl.pathname;
+  // API routes check the session themselves; skip the extra auth round-trip here.
+  if (path.startsWith('/api/')) return NextResponse.next();
   let res = NextResponse.next({ request: req });
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
@@ -15,8 +18,10 @@ export async function middleware(req: NextRequest) {
       }
     }
   });
-  const { data: { user } } = await supabase.auth.getUser();
-  const path = req.nextUrl.pathname;
+  // Reads (and refreshes when expired) the session cookie without calling the auth server on every navigation.
+  // Pages fetch data client-side under Row Level Security, so this check only decides the /login redirect.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user && !PUBLIC.some(r => r.test(path))) {
     const url = req.nextUrl.clone(); url.pathname = '/login'; url.searchParams.set('next', path);
     return NextResponse.redirect(url);
