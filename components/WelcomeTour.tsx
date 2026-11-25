@@ -23,11 +23,23 @@ const SLIDES = [
   }
 ];
 
-function Art({ i }: { i: number }) {
+/** Types the text out letter by letter, then keeps a blinking caret. */
+function TypeText({ text, delay = 350, speed = 70 }: { text: string; delay?: number; speed?: number }) {
+  const chars = Array.from(text);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    setN(0); let k = 0; let t: ReturnType<typeof setTimeout>;
+    const tick = () => { k++; setN(k); if (k < chars.length) t = setTimeout(tick, speed); };
+    t = setTimeout(tick, delay); return () => clearTimeout(t);
+  }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <span className="typed">{chars.slice(0, n).join('')}<span className="caret" /></span>;
+}
+
+function Art({ i, name }: { i: number; name?: string }) {
   if (i === 0) return (
     <div className="art art0" aria-hidden="true">
       <div className="mock">
-        <div className="mock-h"><i /><b /></div>
+        <div className="mock-h"><img src="/hoose-logo.png" alt="" className="mock-logo" /><TypeText text={'Hello ' + (name?.trim().split(/\s+/)[0] || 'there')} /></div>
         {['ลูกค้า', 'ประเภทงาน', 'วันถ่าย', 'โลเคชัน'].map((l, k) => <div className="mock-f" key={l} style={{ animationDelay: 0.25 + k * 0.18 + 's' }}><span>{l}</span><i /></div>)}
         <div className="mock-btn">ยืนยันรายละเอียด</div>
       </div>
@@ -76,7 +88,7 @@ export default function WelcomeTour({ name, onClose, onCreate }: { name?: string
           <p>{s.body}</p>
           <ul>{s.points.map((p, k) => <li key={p} style={{ animationDelay: 0.2 + k * 0.1 + 's' }}>{p}</li>)}</ul>
         </div>
-        <Art i={i} />
+        <Art i={i} name={name} />
       </div>
       <div className="tour-foot">
         <div className="dots" role="tablist">{SLIDES.map((_, k) => <button key={k} role="tab" aria-selected={k === i} aria-label={'หน้า ' + (k + 1)} className={k === i ? 'on' : ''} onClick={() => go(k)} />)}</div>

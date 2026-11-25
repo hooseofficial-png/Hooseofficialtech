@@ -366,3 +366,8 @@ html{scroll-behavior:smooth}
 .bslider input:focus-visible{outline:none}.bslider input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--blue-3)}
 .guide-btn{gap:6px;color:var(--blue);border-color:var(--blue-3);background:var(--blue-bg)}
 .guide-btn:not([disabled]):hover{background:#fff;border-color:var(--blue)}
+.mock-h{min-height:32px}
+.mock-logo{height:24px;width:auto;flex:none}
+.typed{font:600 16px var(--f-display);color:var(--ink);white-space:nowrap;overflow:hidden;display:inline-flex;align-items:center}
+.caret{display:inline-block;width:2px;height:18px;margin-left:2px;background:var(--blue);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
