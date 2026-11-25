@@ -445,3 +445,34 @@ a,.link-btn{transition:color .15s,opacity .15s}
 /* focus ring that feels deliberate */
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px;transition:outline-offset .15s}
 .btn:focus-visible{outline-offset:3px}
+
+/* ---- Party Code + my position ---- */
+.party-in{height:58px;text-align:center;font:700 28px var(--f-display);letter-spacing:.45em;text-transform:uppercase;border-radius:14px;padding-left:.45em}
+.party-in.compact{height:46px;font-size:20px;max-width:210px;letter-spacing:.35em}
+.party-in::placeholder{color:#D5D5E0}
+.join-card{gap:14px;padding:28px}
+.join-strip{flex-direction:row;align-items:center;flex-wrap:wrap;gap:12px}
+.party-show{display:flex;justify-content:center;gap:8px;margin:6px 0}
+.party-show span{width:46px;height:58px;border-radius:12px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font:700 28px var(--f-display);box-shadow:0 8px 20px rgba(13,0,255,.25);animation:popIn .35s var(--ease-spring) both}
+.party-rules{margin:0;padding-left:18px;font-size:13px;color:var(--ink-2);display:flex;flex-direction:column;gap:6px}
+.my-pos{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.my-pos-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:34px;padding:8px 12px;border-radius:12px;background:var(--blue-bg);animation:fadeUp .4s var(--ease) both}
+.my-pos-line .cap{color:var(--blue)}
+.my-pos-text{font-size:13px}.my-pos-text b{color:var(--ink)}
+.pos-btn{border:0;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .15s var(--ease),box-shadow .2s}
+.pos-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(13,0,255,.3)}
+.skel-line{background:linear-gradient(90deg,#ECECF2,#F6F6FA,#ECECF2);background-size:200% 100%;animation:sk 1.2s infinite}
+@media (max-width:520px){.party-show span{width:40px;height:50px;font-size:22px}.party-in{letter-spacing:.3em;font-size:24px}}
+
+/* ---- Production Day: whole box highlighted ---- */
+.cal .d.shoot{background:linear-gradient(160deg,#0D00FF 0%,#2A1FFF 100%);border-color:#0D00FF;box-shadow:0 6px 16px rgba(13,0,255,.25)}
+.cal .d.shoot>.dn{color:#fff}
+.cal .d .dn{display:flex;align-items:center;justify-content:space-between;gap:4px;font-size:11px;font-weight:600;color:var(--mut)}
+.cal .d.shoot .ev{background:#fff!important;color:var(--blue)}
+.cal .d.shoot .ev[style*="background"]{color:var(--blue)}
+.cam{font-style:normal;font-size:15px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25));animation:camIn .5s var(--ease-spring) both}
+@keyframes camIn{from{transform:scale(0) rotate(-20deg)}to{transform:none}}
+.cal .d.shoot:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(13,0,255,.35)}
+.cal .d.shoot.t{outline:2px solid var(--ink);outline-offset:1px}
+.cal .d.shoot.over{background:#2A1FFF!important}
+@media (max-width:640px){.cam{font-size:11px}.cal .d.shoot .ev{background:#fff!important}}

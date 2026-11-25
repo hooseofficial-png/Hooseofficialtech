@@ -21,7 +21,7 @@ const safeName = (n: string) => n.normalize('NFKD').replace(/[^\w.\-ก-๙]+/g,
 
 export async function loadFull(id: string): Promise<ProjectData | null> {
   const s = sb();
-  const [p, crew, ev, cats, files, bud, lines, ann] = await Promise.all([
+  const [p, crew, ev, cats, files, bud, lines, ann, mem] = await Promise.all([
     s.from('projects').select('*').eq('id', id).maybeSingle(),
     s.from('crew_positions').select('*').eq('project_id', id).order('sort').order('created_at'),
     s.from('events').select('*').eq('project_id', id),
@@ -29,14 +29,15 @@ export async function loadFull(id: string): Promise<ProjectData | null> {
     s.from('doc_files').select('*').eq('project_id', id).order('created_at'),
     s.from('budgets').select('*').eq('project_id', id).maybeSingle(),
     s.from('budget_lines').select('*').eq('project_id', id).order('sort').order('created_at'),
-    s.from('announcements').select('id,status,created_at,position_ids,message').eq('project_id', id).order('created_at')
+    s.from('announcements').select('id,status,created_at,position_ids,message').eq('project_id', id).order('created_at'),
+    s.from('project_members').select('user_id', { count: 'exact', head: true }).eq('project_id', id)
   ]);
   if (!p.data) return null;
   const docs: DocCategory[] = (cats.data || []).map((c: any) => ({ id: c.id, title: c.title, sort: c.sort, files: (files.data || []).filter((f: any) => f.category_id === c.id) }));
   return {
     project: p.data, crew: crew.data || [], events: ev.data || [], docs,
     budget: bud.data || { project_id: id, total: 0, crew_alloc: 0, crew_alloc_draft: false, drafted: false },
-    lines: lines.data || [], announcements: (ann.data || []).map((a: any) => ({ ...a, positions: (a.position_ids || []).length })), withMoney: true
+    lines: lines.data || [], members: mem.count || 0, announcements: (ann.data || []).map((a: any) => ({ ...a, positions: (a.position_ids || []).length })), withMoney: true
   };
 }
 

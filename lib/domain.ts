@@ -9,7 +9,7 @@ export interface Project {
   pm_name: string; pm_phone: string; deliverables: string; type: string; campaign: string; synopsis: string;
   start_date: string | null; end_date: string | null; queues: number | null; call_time: string | null; wrap_time: string | null;
   setting: string; time_of_day: string; special: string; locations: string[]; logo_path: string | null; line_group_link: string;
-  details_locked: boolean; locked_at: string | null; share_enabled: boolean; share_budget: boolean;
+  details_locked: boolean; locked_at: string | null; share_enabled: boolean; share_budget: boolean; party_code?: string;
   created_at: string; updated_at: string;
 }
 export interface Crew {
@@ -26,7 +26,7 @@ export interface Announcement { id: string; status: string; created_at: string; 
 /** Everything about one project, as the pages and the PDF need it. */
 export interface ProjectData {
   project: Project; crew: Crew[]; events: HEvent[]; docs: DocCategory[];
-  budget: Budget | null; lines: BudgetLine[] | null; announcements: Announcement[]; withMoney: boolean;
+  budget: Budget | null; lines: BudgetLine[] | null; announcements: Announcement[]; withMoney: boolean; members?: number;
 }
 
 export const DEPTS: [string, string, string[]][] = [
@@ -107,7 +107,8 @@ export function readiness(d: ProjectData): [string, string, number, string][] {
     const T = num(d.budget?.total); const al = budgetAllocated(d);
     rows.push(['budget', 'งบไม่เกินงบรวม', T ? (al <= T ? 1 : 0.5) : 0, T ? (al <= T ? Math.round((al / T) * 100) + '% จัดสรร' : 'เกินงบรวม') : 'ยังไม่ตั้งงบ']);
   }
-  rows.push(['share', 'แชร์สรุปผลให้ทีม', p.share_enabled ? 1 : 0, p.share_enabled ? 'เปิดลิงก์แล้ว' : 'ยังไม่แชร์']);
+  const mem = d.members || 0;
+  rows.push(['share', 'ทีมเข้าร่วมด้วย Party Code', mem > 1 ? 1 : 0, mem > 1 ? (mem - 1) + ' คนเข้าร่วม' : 'ยังไม่มีทีมเข้าร่วม']);
   return rows;
 }
 export const readyPct = (d: ProjectData) => { const r = readiness(d); return Math.round((r.reduce((a, x) => a + x[2], 0) / r.length) * 100); };
@@ -154,3 +155,21 @@ export function fromSummaryJson(j: any): ProjectData {
 /** Job titles a HOOSE account can hold (stored in profiles.position). */
 export const POSITIONS = ['Director', 'Producer', 'Production Manager'] as const;
 export const POSITION_TH: Record<string, string> = { Director: 'ผู้กำกับ', Producer: 'โปรดิวเซอร์', 'Production Manager': 'ผู้จัดการกองถ่าย' };
+
+/** Positions a member can hold inside one project (account position + common crew / client roles). */
+export const PROJECT_POSITIONS = ['Production Manager', 'Producer', 'Director', 'Assistant Director', 'Director of Photography', 'Art Director', 'Production Coordinator', 'ทีมงาน (Crew)', 'ลูกค้า / แบรนด์', 'เอเจนซี่'] as const;
+export const POSITION_DESC: Record<string, string> = {
+  'Production Manager': 'วางแผนพรีโปรดักชัน ทีมงาน คิวถ่าย งบ และเอกสารทั้งหมด',
+  Producer: 'ดูแลลูกค้า งบประมาณ และให้งานเดินตามแผน',
+  Director: 'ดูแลความคิดสร้างสรรค์ Treatment และการถ่ายทำ',
+  'Assistant Director': 'คุมตารางถ่ายทำและคิวในกองให้เป็นไปตามแผน',
+  'Director of Photography': 'ดูแลภาพ กล้อง และไฟ',
+  'Art Director': 'ดูแลฉาก พร็อพ และเสื้อผ้า',
+  'Production Coordinator': 'ประสานงานทีม เอกสาร และการเดินทาง',
+  'ทีมงาน (Crew)': 'ติดตามนัด คิวถ่าย และเอกสารที่เกี่ยวกับงานของคุณ',
+  'ลูกค้า / แบรนด์': 'ติดตามความคืบหน้า ตารางนัด และสรุปงาน',
+  'เอเจนซี่': 'ประสานระหว่างลูกค้าและทีมผลิต ติดตามความคืบหน้า'
+};
+export const ROLE_TH: Record<string, string> = { owner: 'Owner · จัดการได้ทุกอย่าง', editor: 'Editor · แก้ไขได้ทุกหน้า', viewer: 'Viewer · ดูสรุปผล' };
+/** Normalise what people type as a Party Code: letters/digits only, upper case, max 6. */
+export const cleanCode = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);

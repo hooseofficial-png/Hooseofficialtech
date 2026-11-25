@@ -14,8 +14,11 @@ import { loadFull } from '@/components/ProjectProvider';
 import { dateRange, docOk, evKey, evLabel, firstShoot, fmtS, hm, ini, readyPct, todayISO, type HEvent, type ProjectData, type Project, type Role } from '@/lib/domain';
 import { toast, errText, navStart, celebrate } from '@/lib/ui';
 import CountUp from '@/components/CountUp';
+import PartyCodeField from '@/components/PartyCodeField';
+import { joinWithCode } from '@/lib/party';
+import { POSITION_DESC } from '@/lib/domain';
 
-interface Item { role: Role; project: Project; full: ProjectData | null }
+interface Item { role: Role; position?: string; project: Project; full: ProjectData | null }
 
 function Meter({ label, val, r }: { label: string; val: string; r: number }) {
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><div className="between" style={{ fontSize: 12, color: 'var(--mut)' }}><span>{label}</span><span className="num">{val}</span></div><div className="bar" style={{ height: 6 }}><i style={{ width: Math.round(r * 100) + '%' }} /></div></div>;
@@ -26,6 +29,13 @@ export default function Overview() {
   const [items, setItems] = useState<Item[] | null>(() => (typeof window !== 'undefined' ? getCache<Item[]>('home') ?? null : null));
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [del, setDel] = useState<Item | null>(null);
+  const [code, setCode] = useState(''); const [codeErr, setCodeErr] = useState(''); const [joining, setJoining] = useState(false);
+  async function join() {
+    if (code.length !== 6) { setCodeErr('Party Code มี 6 ตัวอักษร'); return; }
+    setJoining(true); setCodeErr('');
+    try { const pid = await joinWithCode(code); celebrate(); navStart(); router.push('/p/' + pid); }
+    catch (e) { setCodeErr((e as Error).message); setJoining(false); }
+  }
   const [tour, setTour] = useState(false); const [me, setMe] = useState<{ id: string; name: string } | null>(null);
   const load = useCallback(async () => {
     const me = await getMe(); if (!me) return;
@@ -34,10 +44,10 @@ export default function Overview() {
     setMe({ id: me.id, name: prof?.full_name || '' });
     if (prof && (!prof.tour_done_at || new URLSearchParams(window.location.search).get('tour'))) setTour(true);
     if (window.location.search.includes('tour')) window.history.replaceState(null, '', '/');
-    const { data } = await sb().from('project_members').select('role, projects(*)').eq('user_id', me.id);
-    const rows = (data || []).filter((r: any) => r.projects) as unknown as { role: Role; projects: Project }[];
+    const { data } = await sb().from('project_members').select('role, position, projects(*)').eq('user_id', me.id);
+    const rows = (data || []).filter((r: any) => r.projects) as unknown as { role: Role; position: string; projects: Project }[];
     const full = await Promise.all(rows.map(r => (r.role === 'viewer' ? Promise.resolve(null) : loadFull(r.projects.id))));
-    const next = rows.map((r, i) => ({ role: r.role, project: r.projects, full: full[i] }));
+    const next = rows.map((r, i) => ({ role: r.role, position: r.position || me.profile?.position || '', project: r.projects, full: full[i] }));
     setItems(next); setCache('home', next);
     next.forEach(it => { if (it.full) setCache('p:' + it.project.id, { role: it.role, data: it.full }); });
   }, [router]);
@@ -77,12 +87,18 @@ export default function Overview() {
       <main className="wrap">
         <div className="between"><h1>ภาพรวม</h1><div className="row">{!tour && <button className="btn guide-btn" onClick={() => setTour(true)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"/><path d="M8 7h7M8 11h5"/></svg>คู่มือการใช้งาน</button>}<button className="btn p" onClick={create}>+ โปรเจกต์ใหม่</button></div></div>
         {tour && <WelcomeTour name={me?.name} onClose={closeTour} onCreate={create} />}
+        <section className="card join-strip">
+          <div className="grow" style={{ minWidth: 200 }}><h2>มี Party Code?</h2><span className="mut" style={{ fontSize: 13 }}>ใส่ Code 6 ตัวจากทีม เพื่อเข้าร่วมโปรเจกต์</span></div>
+          <PartyCodeField value={code} onChange={v => { setCode(v); setCodeErr(''); }} onEnter={join} compact />
+          <button className="btn p" onClick={join} disabled={joining || code.length !== 6}>{joining ? 'กำลังเข้าร่วม…' : 'เข้าร่วม'}</button>
+          {codeErr && <div className="err" role="alert" style={{ flexBasis: '100%' }}>{codeErr}</div>}
+        </section>
         {items === null ? <><div className="skel" /><div className="skel" /></> : <>
           <div className="grid">{stats.map(([l, v]) => <div key={l} className="card c3" style={{ gap: 4 }}><span className="cap">{l}</span><b className="num" style={{ font: '600 28px/1.1 var(--f-display)' }}><CountUp value={v as number} /></b></div>)}</div>
           <CalendarSync variant="card" />
           {!managed.length && !viewing.length && <div className="empty"><h2 style={{ color: 'var(--ink)' }}>ยังไม่มีโปรเจกต์</h2><p>สร้างโปรเจกต์แรก แล้วกรอกรายละเอียด ทีมงาน และเอกสาร ทุกคนในทีมเห็นข้อมูลเดียวกันทันที</p><button className="btn p" onClick={create}>+ สร้างโปรเจกต์แรก</button></div>}
           {managed.length > 0 && <div className="pcards">
-            {managed.map(({ project: p, full: d, role }) => {
+            {managed.map(({ project: p, full: d, role, position }) => {
               const cf = d!.crew.filter(c => c.status === 'confirmed').length; const dn = d!.docs.filter(docOk).length;
               const nx = d!.events.filter(e => e.date && e.date >= t).sort((a, b) => evKey(a).localeCompare(evKey(b)))[0];
               return (
@@ -92,6 +108,7 @@ export default function Overview() {
                     <div className="grow"><h2 className="ell">{p.name || 'โปรเจกต์ไม่มีชื่อ'}</h2><div className="mut ell" style={{ fontSize: 12 }}>{p.brand || 'ยังไม่ระบุลูกค้า'}</div></div>
                     {role === 'owner' && <button className="btn sm ghost" onClick={e => { e.stopPropagation(); setDel({ role, project: p, full: d }); }} aria-label="ลบโปรเจกต์">ลบ</button>}
                   </div>
+                  <div className="my-pos"><span className="pos-tag lg" style={{ marginLeft: 0 }}>{position || 'ยังไม่ระบุตำแหน่ง'}</span><span className="mut" style={{ fontSize: 12 }}>คุณในโปรเจกต์นี้ · {role === 'owner' ? 'Owner' : 'Editor'}</span></div>
                   <div className="row w"><span className="chip lb">{dateRange(p) || 'ยังไม่ตั้งวันถ่าย'}</span>{p.queues ? <span className="chip">{p.queues} คิว</span> : null}<span className="chip k">พร้อม {readyPct(d!)}%</span>{p.details_locked && <span className="chip b">ยืนยันแล้ว</span>}</div>
                   <Meter label="ทีมงาน" val={cf + '/' + d!.crew.length} r={d!.crew.length ? cf / d!.crew.length : 0} />
                   <Meter label="เอกสาร" val={dn + '/' + d!.docs.length} r={d!.docs.length ? dn / d!.docs.length : 0} />
@@ -102,7 +119,7 @@ export default function Overview() {
             <button className="card newcard" onClick={create}>+ โปรเจกต์ใหม่</button>
           </div>}
           {viewing.length > 0 && <section className="card"><h2>โปรเจกต์ที่ดูได้ (Viewer)</h2><div className="list">
-            {viewing.map(({ project: p }) => <div className="li" key={p.id}><span className="grow"><b>{p.name || 'โปรเจกต์'}</b> <span className="mut">{dateRange(p)}</span></span><Link className="btn sm" href={`/p/${p.id}/summary`}>ดูสรุปผล</Link></div>)}
+            {viewing.map(({ project: p, position }) => <div className="li" key={p.id}><span className="grow"><b>{p.name || 'โปรเจกต์'}</b> <span className="mut">{dateRange(p)}</span><div className="mut" style={{ fontSize: 12 }}>คุณทำหน้าที่ <b style={{ color: 'var(--blue)' }}>{position || 'ยังไม่ระบุตำแหน่ง'}</b>{position && POSITION_DESC[position] ? ' · ' + POSITION_DESC[position] : ''}</div></span><Link className="btn sm" href={`/p/${p.id}/summary`}>ดูสรุปผล</Link></div>)}
           </div></section>}
           {managed.length > 0 && <section className="card"><div className="between"><h2>ปฏิทินทุกโปรเจกต์</h2><div className="row w"><CalendarSync /><MonthNav month={month} setMonth={setMonth} /></div></div>
             <MonthGrid month={month} items={allEv.map(x => ({ e: x.e, label: (x.p.name || 'โปรเจกต์').split(' ')[0], title: (x.p.name || 'โปรเจกต์') + ' · ' + evLabel(x.e) }))} /><Legend /></section>}

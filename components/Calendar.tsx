@@ -8,7 +8,7 @@ export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: str
   return <div className="row"><button className="btn sm" onClick={() => go(-1)} aria-label="เดือนก่อนหน้า">‹</button><b style={{ minWidth: 120, textAlign: 'center' }}>{d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</b><button className="btn sm" onClick={() => go(1)} aria-label="เดือนถัดไป">›</button></div>;
 }
 export function Legend() {
-  return <div className="row w" style={{ fontSize: 12, color: 'var(--mut)' }}>{(Object.keys(ET) as (keyof typeof ET)[]).map(k => <span key={k} className="row" style={{ gap: 5 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: ET[k][1] }} />{ET[k][0]}</span>)}</div>;
+  return <div className="row w" style={{ fontSize: 12, color: 'var(--mut)' }}>{(Object.keys(ET) as (keyof typeof ET)[]).map(k => <span key={k} className="row" style={{ gap: 5 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: ET[k][1] }} />{k === 'shoot' ? '🎥 ' + ET[k][0] + ' (Production Day)' : ET[k][0]}</span>)}</div>;
 }
 type Item = { e: HEvent; label: string; title: string };
 
@@ -62,7 +62,9 @@ export function MonthGrid({ month, items, onMove, tbd }: { month: string; items:
         {Array.from({ length: first.getDay() }, (_, i) => <div key={'x' + i} className="d x" />)}
         {Array.from({ length: days }, (_, i) => {
           const ds = month + '-' + pad(i + 1); const its = items.filter(x => x.e.date === ds);
-          return <div key={ds} data-drop={onMove ? ds : undefined} className={'d' + (ds === t ? ' t' : '') + (drag && drag.over === ds ? ' over' : '')}><span>{i + 1}</span>
+          const shoot = its.some(x => x.e.type === 'shoot');
+          return <div key={ds} data-drop={onMove ? ds : undefined} className={'d' + (ds === t ? ' t' : '') + (shoot ? ' shoot' : '') + (drag && drag.over === ds ? ' over' : '')} title={shoot ? 'Production Day · วันถ่ายทำ' : undefined}>
+            <span className="dn">{i + 1}{shoot && <em className="cam" aria-label="วันถ่ายทำ">🎥</em>}</span>
             {its.slice(0, 3).map(x => chip(x))}
             {its.length > 3 && <span>+{its.length - 3}</span>}</div>;
         })}

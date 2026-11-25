@@ -6,6 +6,7 @@ import ProjectProvider, { useProject } from '@/components/ProjectProvider';
 import TopBar from '@/components/TopBar';
 import ShareModal from '@/components/ShareModal';
 import ProjectTitle from '@/components/ProjectTitle';
+import MyPosition from '@/components/MyPosition';
 
 const TABS: [string, string][] = [['', 'แดชบอร์ด'], ['details', 'รายละเอียด'], ['crew', 'ทีมงาน'], ['docs', 'เอกสาร'], ['calendar', 'ปฏิทินทีม'], ['budget', 'งบประมาณ'], ['summary', 'สรุปผล'], ['members', 'สมาชิก']];
 
@@ -24,7 +25,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (role === 'viewer' && sub !== 'summary') router.replace(`/p/${id}/summary`); }, [role, sub, id, router]);
   if (loading) return <><TopBar /><main className="wrap"><div className="skel" /><div className="skel" /></main></>;
   if (missing || !data) return <><TopBar /><main className="wrap"><div className="empty"><h2 style={{ color: 'var(--ink)' }}>ไม่พบโปรเจกต์นี้</h2><p>อาจถูกลบไปแล้ว หรือคุณยังไม่ได้รับสิทธิ์เข้าถึง</p><Link className="btn p" href="/">ไปหน้าภาพรวม</Link></div></main></>;
-  if (role === 'viewer') return <><TopBar label="สรุปผลโปรเจกต์" /><main className="wrap">{sub === 'summary' ? children : <div className="skel" />}</main></>;
+  if (role === 'viewer') return <><TopBar label="สรุปผลโปรเจกต์" /><main className="wrap"><MyPosition projectId={id} />{sub === 'summary' ? children : <div className="skel" />}</main></>;
   return (
     <>
       <TopBar />
@@ -35,8 +36,9 @@ function Shell({ children }: { children: React.ReactNode }) {
       <main className="wrap">
         <div className="between">
           <div className="row" style={{ minWidth: 0 }}><Link className="btn sm ghost" href="/">← ภาพรวม</Link><ProjectTitle /></div>
-          <button className="btn sm p" onClick={() => setShare(true)}>แชร์ให้ทีม</button>
+          <button className="btn sm p" onClick={() => setShare(true)}>แชร์ Party Code</button>
         </div>
+        <MyPosition projectId={id} />
         {children}
       </main>
       {share && <ShareModal onClose={() => setShare(false)} />}

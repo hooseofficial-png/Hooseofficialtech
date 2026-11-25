@@ -23,7 +23,7 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user;
   if (!user && !PUBLIC.some(r => r.test(path))) {
-    const url = req.nextUrl.clone(); url.pathname = '/login'; url.searchParams.set('next', path);
+    const url = req.nextUrl.clone(); url.pathname = '/login'; url.search = ''; url.searchParams.set('next', path + req.nextUrl.search);
     return NextResponse.redirect(url);
   }
   return res;
