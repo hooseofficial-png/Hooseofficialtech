@@ -4,7 +4,7 @@ import { sb } from '@/lib/supabase/client';
 import { clearCache } from '@/lib/cache';
 
 type Screen = 'signin' | 'signup' | 'verify' | 'forgot' | 'sent';
-const CODE_LEN = 6;
+const CODE_LEN = Number(process.env.NEXT_PUBLIC_OTP_LENGTH) || 6; // must match Supabase → Auth → Email OTP Length
 
 const th = (m: string) =>
   /invalid login/i.test(m) ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
@@ -65,6 +65,12 @@ export default function Login() {
     if (q.get('next')?.startsWith('/')) setNext(q.get('next')!);
     if (q.get('email')) setEmail(q.get('email')!);
     if (q.get('mode') === 'signup') setScreen('signup');
+    // Old e-mails with a confirm link: Gmail's link scanner often opens the link first, so the user's own click says "expired".
+    const h = new URLSearchParams(window.location.hash.slice(1));
+    if (h.get('error_code') === 'otp_expired' || h.get('error') === 'access_denied') {
+      setMsg('ลิงก์ยืนยันในอีเมลถูกใช้ไปแล้ว (ระบบสแกนอีเมลอาจเปิดให้อัตโนมัติ) บัญชีของคุณอาจยืนยันเรียบร้อยแล้ว ลองเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน');
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
   }, []);
   useEffect(() => { if (cool <= 0) return; const t = setTimeout(() => setCool(cool - 1), 1000); return () => clearTimeout(t); }, [cool]);
 
@@ -78,7 +84,7 @@ export default function Login() {
     const { error } = await sb().auth.signInWithPassword({ email: em(), password });
     setBusy(false);
     if (error) {
-      if (/email not confirmed/i.test(error.message)) { await resend(); go('verify'); return; }
+      if (/email not confirmed/i.test(error.message)) { go('verify'); await resend(); return; }
       setMsg(th(error.message)); return;
     }
     window.location.href = next;
@@ -167,7 +173,7 @@ export default function Login() {
           {err}
           <button className="btn k lg" onClick={() => verify()} disabled={busy || code.length !== CODE_LEN}>{busy ? 'กำลังยืนยัน…' : 'ยืนยัน'}</button>
           <p className="auth-sub">ไม่ได้รับรหัส? {cool > 0 ? <span className="mut">ส่งอีกครั้งได้ใน {cool} วินาที</span> : <button type="button" className="link-btn" onClick={resend}>ส่งรหัสอีกครั้ง</button>} หรือ <button type="button" className="link-btn" onClick={() => go('signup')}>เปลี่ยนอีเมล</button></p>
-          <p className="auth-fine">ยังไม่ได้? ดูในโฟลเดอร์ Spam / Promotions · หรือกดปุ่มยืนยันในอีเมลก็ได้</p>
+          <p className="auth-fine">ยังไม่ได้? ดูในโฟลเดอร์ Spam / Promotions · รหัสใช้ได้ภายใน 1 ชั่วโมง</p>
         </div>}
 
         {screen === 'forgot' && <form onSubmit={forgot} className="auth-form">
