@@ -150,3 +150,7 @@ export function fromSummaryJson(j: any): ProjectData {
     budget: j.budget || null, lines: j.budget_lines || null, announcements: j.announcements || [], withMoney: !!j.with_money
   };
 }
+
+/** Job titles a HOOSE account can hold (stored in profiles.position). */
+export const POSITIONS = ['Director', 'Producer', 'Production Manager'] as const;
+export const POSITION_TH: Record<string, string> = { Director: 'ผู้กำกับ', Producer: 'โปรดิวเซอร์', 'Production Manager': 'ผู้จัดการกองถ่าย' };

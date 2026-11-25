@@ -5,7 +5,7 @@ import { sb } from '@/lib/supabase/client';
 import type { Role } from '@/lib/domain';
 import { toast, errText } from '@/lib/ui';
 
-interface Person { user_id: string | null; email: string; full_name: string; role: Role; pending: boolean }
+interface Person { user_id: string | null; email: string; full_name: string; role: Role; pending: boolean; position?: string; company?: string }
 const ROLES: Record<Role, [string, string]> = {
   owner: ['เจ้าของ', 'ทุกอย่าง รวมถึงลบโปรเจกต์'],
   editor: ['Editor', 'แก้ไขทุกหน้า เชิญสมาชิก'],
@@ -16,7 +16,11 @@ export default function Members() {
   const { id, role } = useProject();
   const [people, setPeople] = useState<Person[]>([]);
   const [email, setEmail] = useState(''); const [r, setR] = useState<Role>('viewer'); const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { const { data } = await sb().rpc('project_people', { pid: id }); setPeople((data as Person[]) || []); }, [id]);
+  const load = useCallback(async () => {
+    const [{ data }, { data: info }] = await Promise.all([sb().rpc('project_people', { pid: id }), sb().rpc('project_people_info', { pid: id })]);
+    const I = new Map(((info as { user_id: string; job_title: string; company: string }[]) || []).map(x => [x.user_id, x]));
+    setPeople(((data as Person[]) || []).map(p => ({ ...p, position: (p.user_id && I.get(p.user_id)?.job_title) || '', company: (p.user_id && I.get(p.user_id)?.company) || '' })));
+  }, [id]);
   useEffect(() => { load(); }, [load]);
   async function invite(e: React.FormEvent) {
     e.preventDefault(); setBusy(true);
@@ -53,7 +57,7 @@ export default function Members() {
         <div className="list">{people.map(p => (
           <div className="li" key={p.email}>
             <span className={'av' + (p.pending ? ' o' : '')}>{(p.full_name || p.email)[0]?.toUpperCase()}</span>
-            <div className="grow"><div style={{ fontWeight: 600 }} className="ell">{p.full_name || p.email}</div><div className="mut" style={{ fontSize: 12 }}>{p.email}{p.pending ? ' · รอเข้าสู่ระบบครั้งแรก' : ''}</div></div>
+            <div className="grow"><div style={{ fontWeight: 600 }} className="ell">{p.full_name || p.email}{p.position && <span className="pos-tag">{p.position}</span>}</div><div className="mut" style={{ fontSize: 12 }}>{p.email}{p.company ? ' · ' + p.company : ''}{p.pending ? ' · รอเข้าสู่ระบบครั้งแรก' : ''}</div></div>
             {p.role === 'owner' && !isOwner ? <span className="chip b">เจ้าของ</span> : (
               <select className="in-t" style={{ width: 150, height: 34 }} value={p.role} onChange={e => change(p, e.target.value as Role)} aria-label="บทบาท">
                 {(Object.keys(ROLES) as Role[]).filter(k => k !== 'owner' || isOwner).map(k => <option key={k} value={k}>{ROLES[k][0]}</option>)}

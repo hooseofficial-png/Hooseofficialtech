@@ -4,6 +4,7 @@ import { useProject } from '@/components/ProjectProvider';
 import { sb } from '@/lib/supabase/client';
 import { D, TYPES, fmtL, iso, num, shootDays, type Project } from '@/lib/domain';
 import { toast, errText } from '@/lib/ui';
+import { pushToGoogle } from '@/lib/gsync';
 
 type Key = keyof Project;
 
@@ -51,7 +52,9 @@ export default function Details() {
     const q = Math.max(1, num(p.queues) || 1); const have = new Set(shootDays(data!).map(e => e.date)); const rows: Record<string, unknown>[] = [];
     for (let i = 0; i < q; i++) { const d = D(p.start_date); d.setDate(d.getDate() + i); const ds = iso(d); if (!have.has(ds)) rows.push({ project_id: id, type: 'shoot', kind: 'Shoot Day · วันถ่ายทำ', date: ds, time: p.call_time, title: p.locations[0] || '' }); }
     if (!rows.length) { toast('วันถ่ายครบอยู่แล้ว'); return; }
-    await act(() => sb().from('events').insert(rows), 'เพิ่ม ' + rows.length + ' วันถ่ายลงปฏิทินแล้ว');
+    let ids: string[] = [];
+    const ok = await act(async () => { const r = await sb().from('events').insert(rows).select('id'); ids = ((r.data as { id: string }[]) || []).map(x => x.id); return r; }, 'เพิ่ม ' + rows.length + ' วันถ่ายลงปฏิทินแล้ว');
+    if (ok) for (const eid of ids) await pushToGoogle(eid);
     if (!p.end_date && q > 1) { const d = D(p.start_date); d.setDate(d.getDate() + q - 1); upd({ end_date: iso(d) }); }
   }
   const logoUrl = signed(p.logo_path);

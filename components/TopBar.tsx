@@ -5,13 +5,13 @@ import { sb } from '@/lib/supabase/client';
 import { ini } from '@/lib/domain';
 
 export default function TopBar({ label = 'Production Management' }: { label?: string }) {
-  const [me, setMe] = useState<{ email: string; name: string } | null>(null);
+  const [me, setMe] = useState<{ email: string; name: string; position: string } | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     sb().auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
-      const { data: p } = await sb().from('profiles').select('full_name,email').eq('id', data.user.id).maybeSingle();
-      setMe({ email: data.user.email || '', name: (p && p.full_name) || '' });
+      const { data: p } = await sb().from('profiles').select('full_name,email,position').eq('id', data.user.id).maybeSingle();
+      setMe({ email: data.user.email || '', name: (p && p.full_name) || '', position: (p && p.position) || '' });
     });
   }, []);
   async function out() { await sb().auth.signOut(); window.location.href = '/login'; }
@@ -28,6 +28,7 @@ export default function TopBar({ label = 'Production Management' }: { label?: st
           </button>
           {open && (
             <div className="card" style={{ position: 'absolute', right: 0, top: 40, width: 240, zIndex: 30, padding: 12, gap: 8 }}>
+              {me.position && <span className="pos-tag lg" style={{ alignSelf: 'flex-start' }}>{me.position}</span>}
               <span className="mut ell" style={{ fontSize: 12 }}>{me.email}</span>
               <Link className="btn sm" href="/account" onClick={() => setOpen(false)}>บัญชีของฉัน</Link>
               <button className="btn sm" onClick={out}>ออกจากระบบ</button>

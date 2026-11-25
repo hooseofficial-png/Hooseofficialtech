@@ -7,6 +7,7 @@ import { MonthGrid, MonthNav, Legend } from '@/components/Calendar';
 import { sb } from '@/lib/supabase/client';
 import { ET, KINDS, evKey, firstShoot, fmtS, hm, todayISO, type EventType, type HEvent } from '@/lib/domain';
 import { toast } from '@/lib/ui';
+import { pushToGoogle } from '@/lib/gsync';
 
 const blank = { kind: 'Kick-Off Meeting', date: '', time: '', title: '', tbd: false };
 
@@ -26,9 +27,17 @@ export default function CalendarPage() {
     if (!f.tbd && !f.date) { toast('เลือกวันที่ หรือติ๊ก “ยังไม่ระบุวัน”'); return; }
     const type = (KINDS.find(k => k[0] === f.kind) || KINDS[2])[1];
     const row = { kind: f.kind, type, date: f.tbd ? null : f.date, time: f.time || null, title: f.title.trim() };
+    let newId: string | null = null; const wasEditing = editing;
     const ok = editing ? await act(() => sb().from('events').update(row).eq('id', editing), 'อัปเดตนัดหมายแล้ว')
-      : await act(() => sb().from('events').insert({ ...row, project_id: id }), f.tbd ? 'เพิ่มนัดแบบยังไม่ระบุวันแล้ว' : 'เพิ่มลงปฏิทินแล้ว');
-    if (ok) { if (row.date) setMonth(row.date.slice(0, 7)); setF(blank); setEditing(null); }
+      : await act(async () => { const r = await sb().from('events').insert({ ...row, project_id: id }).select('id').single(); newId = (r.data as { id: string } | null)?.id || null; return r; }, f.tbd ? 'เพิ่มนัดแบบยังไม่ระบุวันแล้ว' : 'เพิ่มลงปฏิทินแล้ว');
+    if (ok) {
+      if (row.date) setMonth(row.date.slice(0, 7)); setF(blank); setEditing(null);
+      const target = wasEditing || newId; if (target && (row.date || wasEditing)) pushToGoogle(target);
+    }
+  }
+  async function removeEvent(e: HEvent) {
+    if (e.date) await pushToGoogle(e.id, 'DELETE');
+    await act(() => sb().from('events').delete().eq('id', e.id), 'ลบนัดแล้ว');
   }
   function startEdit(e: HEvent) {
     setEditing(e.id); window.scrollTo(0, 0);
@@ -59,8 +68,8 @@ export default function CalendarPage() {
       <section className="card c12">
         <div className="between"><h2>รายการนัด</h2><div className="seg" role="group" aria-label="ตัวกรอง">{([['all', 'ทั้งหมด'], ['brief', 'บรีฟ'], ['meeting', 'ประชุม'], ['shoot', 'ถ่ายทำ']] as const).map(([k, l]) => <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>)}</div></div>
         {!list.length && <div className="empty">ยังไม่มีนัดหมาย</div>}
-        {list.some(e => !e.date) && <><div className="cap">ยังไม่ระบุวัน</div><div className="list">{list.filter(e => !e.date).map(e => <EventRow key={e.id} p={p} e={e} onEdit={() => startEdit(e)} onDelete={() => act(() => sb().from('events').delete().eq('id', e.id), 'ลบนัดแล้ว')} />)}</div><div className="cap" style={{ marginTop: 6 }}>มีวันแล้ว</div></>}
-        <div className="list">{list.filter(e => e.date).map(e => <EventRow key={e.id} p={p} e={e} onEdit={() => startEdit(e)} onDelete={() => act(() => sb().from('events').delete().eq('id', e.id), 'ลบนัดแล้ว')} />)}</div>
+        {list.some(e => !e.date) && <><div className="cap">ยังไม่ระบุวัน</div><div className="list">{list.filter(e => !e.date).map(e => <EventRow key={e.id} p={p} e={e} onEdit={() => startEdit(e)} onDelete={() => removeEvent(e)} />)}</div><div className="cap" style={{ marginTop: 6 }}>มีวันแล้ว</div></>}
+        <div className="list">{list.filter(e => e.date).map(e => <EventRow key={e.id} p={p} e={e} onEdit={() => startEdit(e)} onDelete={() => removeEvent(e)} />)}</div>
       </section>
     </div>
   );

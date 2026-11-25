@@ -23,6 +23,7 @@ export async function GET(req: Request, { params }: { params: { token: string } 
   const { data: feed, error } = await db.rpc('calendar_feed', { p_token: token });
   if (error) { console.error('calendar feed lookup failed:', error.message, error.code); return new Response('Feed unavailable', { status: 503 }); }
   if (!feed) return new Response('Not found', { status: 404 });
+  if (/google/i.test(req.headers.get('user-agent') || '')) await db.rpc('calendar_feed_seen', { p_token: token });
   const me = { full_name: feed.full_name as string | null };
   const projects = (feed.projects || []) as any[]; const events = (feed.events || []) as any[];
   const site = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
