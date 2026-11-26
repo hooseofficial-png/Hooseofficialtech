@@ -13,6 +13,12 @@ function transport() {
   return tx;
 }
 
+/** Log in to the SMTP server without sending anything. */
+export async function verifyMail(): Promise<boolean> {
+  if (!mailConfigured()) return false;
+  try { await transport().verify(); return true; } catch (e) { console.error('smtp verify failed', (e as Error).message); return false; }
+}
+
 export async function sendMail(to: string, subject: string, html: string, text: string) {
   await transport().sendMail({ from: process.env.SMTP_FROM || `HOOSE <${process.env.SMTP_USER}>`, to, subject, html, text });
 }
