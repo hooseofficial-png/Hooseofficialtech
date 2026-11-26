@@ -476,3 +476,18 @@ a,.link-btn{transition:color .15s,opacity .15s}
 .cal .d.shoot.t{outline:2px solid var(--ink);outline-offset:1px}
 .cal .d.shoot.over{background:#2A1FFF!important}
 @media (max-width:640px){.cam{font-size:11px}.cal .d.shoot .ev{background:#fff!important}}
+
+/* Party Code strip: black */
+.join-strip{background:linear-gradient(135deg,#0E0E1A 0%,#1B1B2E 100%);border-color:#0E0E1A;color:#fff;box-shadow:0 14px 34px rgba(14,14,26,.22)}
+.join-strip h2{color:#fff}
+.join-strip .mut{color:rgba(255,255,255,.62)!important}
+.join-strip::after{background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.10),transparent 45%)}
+.join-strip:hover{border-color:#2A2A40}
+.join-strip .party-in{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.22);color:#fff}
+.join-strip .party-in::placeholder{color:rgba(255,255,255,.28)}
+.join-strip .party-in:focus{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.14)}
+.join-strip .btn.p{background:#fff;color:#0E0E1A;border-color:#fff}
+.join-strip .btn.p:not([disabled]):hover{box-shadow:0 8px 22px rgba(255,255,255,.18)}
+.join-strip .btn.p[disabled]{background:rgba(255,255,255,.18);color:rgba(255,255,255,.6);border-color:transparent}
+.join-strip .btn.p .ripple{background:#0E0E1A}
+.join-strip .err{background:rgba(255,255,255,.08);color:#fff}
