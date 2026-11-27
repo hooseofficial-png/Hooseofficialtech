@@ -5,14 +5,14 @@ import TopBar from '@/components/TopBar';
 import { toast } from '@/lib/ui';
 import { NOTIFY, ROLE_TH, STATUS_CHIP, STATUS_TH, fmt } from '@/lib/admin-ui';
 
-type U = Record<string, string | boolean | null> & { line_user_id: string; status: string; note: string };
+type U = Record<string, string | boolean | null> & { line_user_id: string; status: string; note: string; memory: string; needs_attention: boolean; attention_note: string };
 type M = { id: number; role: 'user' | 'assistant'; content: string; created_at: string };
 const ACTIONS = ['interview', 'approved', 'rejected', 'active'];
 
 export default function LineApplicant({ params }: { params: { id: string } }) {
   const [u, setU] = useState<U | null>(null); const [msgs, setMsgs] = useState<M[]>([]);
   const [denied, setDenied] = useState(false); const [missing, setMissing] = useState(false);
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(''); const [memory, setMemory] = useState('');
   const [pick, setPick] = useState<string | null>(null); const [notify, setNotify] = useState(''); const [send, setSend] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -20,7 +20,7 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
     const r = await fetch(`/api/admin/line/${params.id}`);
     if (r.status === 403 || r.status === 401) { setDenied(true); return; }
     if (r.status === 404) { setMissing(true); return; }
-    const j = await r.json(); setU(j.user); setMsgs(j.messages); setNote(j.user.note || '');
+    const j = await r.json(); setU(j.user); setMsgs(j.messages); setNote(j.user.note || ''); setMemory(j.user.memory || '');
   }
   useEffect(() => { load(); }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -62,6 +62,10 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
         </div>
       </section>
 
+      {u.needs_attention && (
+        <div className="notice" role="status"><span>รอทีมตอบ: {u.attention_note}</span>
+          <button className="btn sm" disabled={busy} onClick={() => save({ resolve: true }, 'ปิดเรื่องแล้ว')}>ตอบแล้ว</button></div>
+      )}
       <section className="card">
         <h2>ใบสมัคร</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
@@ -101,6 +105,13 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
         <span className="mut" style={{ fontSize: 12 }}>เห็นเฉพาะแอดมิน ผู้สมัครไม่เห็น</span>
         <textarea className="in-t" style={{ height: 80, padding: 10 }} value={note} onChange={e => setNote(e.target.value)} />
         <button className="btn sm" style={{ alignSelf: 'flex-start' }} disabled={busy || note === (u.note || '')} onClick={() => save({ note }, 'บันทึกโน้ตแล้ว')}>บันทึกโน้ต</button>
+      </section>
+
+      <section className="card">
+        <h2>สิ่งที่ผู้ช่วยจำไว้</h2>
+        <span className="mut" style={{ fontSize: 12 }}>ผู้ช่วยจดเองระหว่างคุย (1 บรรทัดต่อ 1 เรื่อง) แก้หรือลบได้</span>
+        <textarea className="in-t" style={{ height: 90, padding: 10 }} value={memory} onChange={e => setMemory(e.target.value)} />
+        <button className="btn sm" style={{ alignSelf: 'flex-start' }} disabled={busy || memory === (u.memory || '')} onClick={() => save({ memory }, 'บันทึกแล้ว')}>บันทึก</button>
       </section>
 
       <section className="card">

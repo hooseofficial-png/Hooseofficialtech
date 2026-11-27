@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { getProfile, lineConfigured, reply, startLoading, text, verifySignature } from '@/lib/line';
 import { nextStepCard, welcomeCard } from '@/lib/line-cards';
-import { answer, type LineUser } from '@/lib/line-agent';
+import { answer, SORRY, type LineUser } from '@/lib/line-agent';
 
 // HOOSE Official LINE OA webhook.
 // LINE Developers → Messaging API → Webhook URL: https://app.hooseofficial.site/api/line/webhook
@@ -24,8 +24,8 @@ type LineEvent = {
 };
 
 const MENU = /^(เมนู|menu|เริ่มใหม่|start)$/i;
-const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url';
-const APPLY = /^(สมัคร|ใบสมัคร|apply)$/i;
+const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory';
+const APPLY = /^(สมัคร|ใบสมัคร|apply|liff|ฟอร์ม|ฟอร์มสมัคร)$/i;
 
 export async function POST(req: Request) {
   const raw = await req.text();
@@ -78,14 +78,21 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
   }
 
   if (ev.type === 'message') {
-    if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('ตอนนี้ผู้ช่วยอ่านได้เฉพาะข้อความตัวอักษรครับ ส่งลิงก์ผลงานเป็นข้อความได้เลย')]); return; }
+    if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('ตอนนี้น้องฮูสอ่านได้เฉพาะข้อความตัวอักษรนะคะ ถ้าจะส่งผลงาน พิมพ์ "สมัคร" แล้วแนบลิงก์ในฟอร์มได้เลยค่ะ 😊')]); return; }
     const msg = (ev.message.text || '').trim();
     if (MENU.test(msg)) { await reply(ev.replyToken, [welcomeCard(u.display_name)]); return; }
     if (APPLY.test(msg)) { await reply(ev.replyToken, [u.role ? nextStepCard(u.role) : welcomeCard(u.display_name)]); return; }
     await startLoading(userId, 30);
-    let out: string;
+    let out = { text: SORRY, showForm: false };
     try { out = await answer(db, u, msg); }
-    catch (e) { console.error('line agent failed', (e as Error).message); out = 'ขอโทษครับ ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งในอีกสักครู่'; }
-    await reply(ev.replyToken, [text(out)]);
+    catch (e) {
+      // Logged for the team (Vercel logs + admin page); the user only sees a friendly line.
+      const why = (e as Error).message;
+      console.error('line agent failed', why);
+      await db.from('line_users').update({ needs_attention: true, attention_note: 'ผู้ช่วยตอบไม่ได้: ' + why.slice(0, 300), attention_at: new Date().toISOString() }).eq('line_user_id', userId);
+    }
+    const msgs = [text(out.text)];
+    if (out.showForm && u.role) msgs.push(nextStepCard(u.role));
+    await reply(ev.replyToken, msgs);
   }
 }

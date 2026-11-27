@@ -19,13 +19,15 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const b = await req.json().catch(() => ({})) as { status?: string; note?: string; notify?: string };
+  const b = await req.json().catch(() => ({})) as { status?: string; note?: string; notify?: string; memory?: string; resolve?: boolean };
   const patch: Record<string, unknown> = {};
   if (b.status !== undefined) {
     if (!(STATUSES as readonly string[]).includes(b.status)) return NextResponse.json({ error: 'bad status' }, { status: 400 });
     patch.status = b.status; patch.status_changed_at = new Date().toISOString();
   }
   if (typeof b.note === 'string') patch.note = b.note.slice(0, 4000);
+  if (typeof b.memory === 'string') patch.memory = b.memory.slice(0, 1500);
+  if (b.resolve) { patch.needs_attention = false; patch.attention_note = ''; }
   const db = sbAdmin();
   if (Object.keys(patch).length) {
     const { error } = await db.from('line_users').update(patch).eq('line_user_id', params.id);

@@ -45,9 +45,12 @@ export function welcomeCard(name?: string): LineMessage {
     ]);
 }
 
-/** Opens the application form (LIFF) inside LINE. Needs NEXT_PUBLIC_LIFF_ID. */
+/** LIFF app id from Vercel env (either name works). Server only. */
+export function liffId() { return process.env.NEXT_PUBLIC_LIFF_ID || process.env.NEXT_LIFF_ID || ''; }
+
+/** Opens the application form (LIFF) inside LINE. */
 export function applyUrl(role: string) {
-  const id = process.env.NEXT_PUBLIC_LIFF_ID;
+  const id = liffId();
   return id ? `https://liff.line.me/${id}?role=${encodeURIComponent(role)}` : '';
 }
 

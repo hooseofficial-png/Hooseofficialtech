@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import { ROLE_TH, STATUS_TH, STATUS_CHIP, fmt } from '@/lib/admin-ui';
 
-type U = { line_user_id: string; display_name: string; full_name: string; phone: string; email: string; role: string | null; status: string; position: string; portfolio_url: string; following: boolean; last_seen_at: string; applied_at: string | null };
+type U = { line_user_id: string; display_name: string; full_name: string; phone: string; email: string; role: string | null; status: string; position: string; portfolio_url: string; following: boolean; last_seen_at: string; applied_at: string | null; needs_attention: boolean; attention_note: string };
 const FUNNEL = ['new', 'applying', 'applied', 'interview', 'approved', 'active'];
 
 export default function LineAdmin() {
@@ -20,7 +20,7 @@ export default function LineAdmin() {
   const byRole = useMemo(() => (users || []).filter(u => role === 'all' || (role === 'none' ? !u.role : u.role === role)), [users, role]);
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return byRole.filter(u => (status === 'all' || u.status === status) &&
+    return byRole.filter(u => (status === 'all' || u.status === status || (status === 'attention' && u.needs_attention)) &&
       (!s || [u.full_name, u.display_name, u.phone, u.email, u.position].some(x => (x || '').toLowerCase().includes(s))));
   }, [byRole, status, q]);
   const count = (st: string) => byRole.filter(u => u.status === st).length;
@@ -44,6 +44,7 @@ export default function LineAdmin() {
       </div>
       <div className="row w" style={{ gap: 8 }}>
         <input className="in-t" style={{ maxWidth: 320 }} placeholder="ค้นหา ชื่อ เบอร์ อีเมล ตำแหน่ง" value={q} onChange={e => setQ(e.target.value)} />
+        <button className={'btn sm' + (status === 'attention' ? ' p' : '')} onClick={() => setStatus(status === 'attention' ? 'all' : 'attention')}>รอทีมตอบ ({byRole.filter(u => u.needs_attention).length})</button>
         <select className="in-t" style={{ maxWidth: 180 }} value={status} onChange={e => setStatus(e.target.value)} aria-label="สถานะ">
           <option value="all">ทุกสถานะ</option>
           {Object.keys(STATUS_TH).map(s => <option key={s} value={s}>{STATUS_TH[s]}</option>)}
@@ -57,7 +58,8 @@ export default function LineAdmin() {
               <tr key={u.line_user_id}>
                 <td><Link href={`/admin/line/${u.line_user_id}`} style={{ fontWeight: 600, color: 'var(--blue)' }}>{u.full_name || u.display_name || 'ไม่ทราบชื่อ'}</Link>
                   {u.full_name && u.display_name && u.full_name !== u.display_name && <div className="mut" style={{ fontSize: 12 }}>LINE: {u.display_name}</div>}
-                  {!u.following && <div className="mut" style={{ fontSize: 12 }}>เลิกติดตามแล้ว</div>}</td>
+                  {!u.following && <div className="mut" style={{ fontSize: 12 }}>เลิกติดตามแล้ว</div>}
+                  {u.needs_attention && <div style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 600 }} className="ell">● รอทีมตอบ: {u.attention_note}</div>}</td>
                 <td>{u.role ? ROLE_TH[u.role] : <span className="mut">–</span>}</td>
                 <td>{u.position || <span className="mut">–</span>}</td>
                 <td><span className={STATUS_CHIP[u.status] || 'chip'}>{STATUS_TH[u.status] || u.status}</span></td>
