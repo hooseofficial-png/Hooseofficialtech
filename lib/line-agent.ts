@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export type LineUser = {
   line_user_id: string; display_name: string; full_name: string; role: string | null; status: string;
   position: string; portfolio_url: string; phone?: string; email?: string; memory?: string;
+  survey?: Record<string, string | string[]>; survey_done_at?: string | null;
 };
 
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
@@ -28,7 +29,8 @@ function system(u: LineUser) {
 บุคลิก:
 - อบอุ่น เป็นกันเองมาก คุยง่าย เหมือนรุ่นพี่ในวงการที่ใจดี เข้าใจคนทำงานฟรีแลนซ์
 - ฟังก่อนตอบ ถ้าผู้ใช้กังวลหรือเหนื่อย ให้รับรู้ความรู้สึกสั้น ๆ ก่อนแล้วค่อยช่วย
-- เรียกผู้ใช้ด้วยชื่อเล่นหรือชื่อที่เขาบอก ใช้ "ค่ะ" ใช้อีโมจิได้บ้าง (ไม่เกิน 1 ตัวต่อข้อความ)
+- เรียกผู้ใช้ด้วยชื่อเล่นหรือชื่อที่เขาบอก ใช้ "ค่ะ/นะคะ" น้ำเสียงสดใส ใส่อีโมจิ 1-2 ตัวทุกข้อความ (เช่น 😊 🎬 ✨ 🙌 💙 🙏) ให้เข้ากับอารมณ์
+- ชมหรือให้กำลังใจอย่างจริงใจเมื่อเหมาะ เช่น เมื่อส่งผลงานหรือตอบแบบสอบถามครบ
 
 วิธีตอบ:
 - ตอบเฉพาะที่ถาม สั้น 1-3 ประโยค ไม่เกริ่น ไม่สรุปซ้ำ ไม่ทวนข้อมูลที่ผู้ใช้ไม่ได้ถาม
@@ -40,14 +42,18 @@ function system(u: LineUser) {
 - บทบาท: ${u.role ? ROLE_TH[u.role] : 'ยังไม่เลือก'}
 - สถานะ: ${STATUS_TH[u.status] || u.status}
 - ตำแหน่ง: ${u.position || '-'} · ลิงก์ผลงาน: ${u.portfolio_url || '-'}
+- แบบสอบถาม (เฉพาะนักตัดต่อ): ${u.role !== 'editor' ? '-' : u.survey_done_at ? 'ตอบครบแล้ว' : 'ยังไม่ครบ'}
 - สิ่งที่จำไว้จากการคุยครั้งก่อน: ${u.memory || '-'}
 
-ขั้นตอนสมัคร: เลือกบทบาท → กรอกใบสมัคร (ฟอร์มในแชท) → ทีม HOOSE ตรวจผลงาน → ทีมติดต่อนัดคุย → แจ้งผลในแชทนี้ → ผู้ที่ผ่านจะได้รับประกาศงาน (Open Call) ตามตำแหน่ง
-ขั้นตอนหลังส่งใบสมัคร ทีมงานเป็นคนกำหนดและแจ้งเอง ห้ามบอกว่ามีแบบสอบถามหรือขั้นตอนอื่นนอกจากนี้ ห้ามบอกระยะเวลาที่ไม่รู้
+ขั้นตอนนักตัดต่อ: ① กรอกใบสมัคร (ชื่อ เบอร์ อีเมล ตำแหน่ง ลิงก์ผลงาน) → ② แบบสอบถาม 4 ข้อแบบกดเลือก → ③ รอผล 1-3 วันทำการ → ④ ผ่านรอบผลงานจะได้ลิงก์นัดสัมภาษณ์ในแชทนี้ → ⑤ ผ่านสัมภาษณ์แล้วกรอกฟอร์มข้อมูลทีมงาน
+ขั้นตอนทีมโปรดักชัน: ① กรอกใบสมัครพร้อมผลงาน → ② รอทีมพิจารณา 1-3 วันทำการ → ③ ผ่านแล้วสมัครบัญชีในแอป HOOSE (app.hooseofficial.site) เพื่อรับงาน
+ห้ามบอกขั้นตอนหรือระยะเวลาอื่นนอกจากนี้
 
 เครื่องมือ:
 - ยังไม่เลือกบทบาท → บอกให้พิมพ์ "เมนู"
-- อยากสมัคร ขอฟอร์ม ขอ LIFF หรือยังไม่ได้ส่งใบสมัคร → เรียก show_application_form (ระบบจะแนบปุ่มฟอร์มไปกับคำตอบ)
+- อยากสมัคร ขอฟอร์ม ขอ LIFF หรือยังไม่ได้ส่งใบสมัคร → show_card kind=form
+- นักตัดต่อที่ส่งใบสมัครแล้วแต่แบบสอบถามยังไม่ครบ หรือขอแบบสอบถาม → show_card kind=survey (ห้ามถามคำถามแบบสอบถามเองในแชท)
+- ถามสถานะ ขออัปเดตงานหรือโปรเจกต์ → show_card kind=status
 - ผู้ใช้บอกข้อมูลส่วนตัวที่ควรจำ (ชื่อเล่น ความถนัด โปรแกรมที่ใช้ วันว่าง จังหวัด เรทค่าตัวที่เขาบอกเอง) → เรียก remember
 - ผู้ใช้ส่งลิงก์ผลงานหรือบอกตำแหน่งในแชท → เรียก update_my_application
 - ถามงานที่เปิดรับ → list_open_calls · ถามสถานะตัวเอง → ตอบจากข้อมูลข้างบน
@@ -74,9 +80,9 @@ const TOOLS = [
     } }
   },
   {
-    name: 'show_application_form',
-    description: 'แนบการ์ดปุ่ม "กรอกใบสมัคร" ไปกับคำตอบ ใช้เมื่อผู้ใช้อยากสมัครหรือขอฟอร์ม',
-    input_schema: { type: 'object', properties: {} }
+    name: 'show_card',
+    description: 'แนบการ์ดไปกับคำตอบ: form = ปุ่มกรอกใบสมัคร, survey = คำถามแบบสอบถามข้อถัดไป (นักตัดต่อที่ส่งใบสมัครแล้ว), status = ปุ่มเปิดหน้าสถานะของฉัน/อัปเดตโปรเจกต์',
+    input_schema: { type: 'object', properties: { kind: { type: 'string', enum: ['form', 'survey', 'status'] } }, required: ['kind'] }
   },
   {
     name: 'remember',
@@ -95,12 +101,23 @@ const TOOLS = [
   }
 ];
 
-type Extras = { showForm: boolean };
+type Extras = { card: 'form' | 'survey' | 'status' | null };
 
 async function runTool(db: SupabaseClient, u: LineUser, name: string, input: Record<string, unknown>, extras: Extras) {
-  if (name === 'show_application_form') {
-    if (!u.role || u.role === 'manager') return { error: 'ผู้ใช้ยังไม่ได้เลือกบทบาทนักตัดต่อหรือทีมโปรดักชัน ให้บอกพิมพ์ "เมนู"' };
-    extras.showForm = true; return { attached: true };
+  if (name === 'show_card') {
+    const kind = input.kind;
+    if (kind === 'form') {
+      if (!u.role || u.role === 'manager') return { error: 'ผู้ใช้ยังไม่ได้เลือกบทบาทนักตัดต่อหรือทีมโปรดักชัน ให้บอกพิมพ์ "เมนู"' };
+      extras.card = 'form'; return { attached: true };
+    }
+    if (kind === 'survey') {
+      if (u.role !== 'editor') return { error: 'แบบสอบถามมีเฉพาะนักตัดต่อ' };
+      if (!['applied', 'interview'].includes(u.status)) return { error: 'ต้องส่งใบสมัครก่อน' };
+      if (u.survey_done_at) return { error: 'ตอบครบแล้ว' };
+      extras.card = 'survey'; return { attached: true };
+    }
+    if (kind === 'status') { extras.card = 'status'; return { attached: true }; }
+    return { error: 'unknown kind' };
   }
   if (name === 'remember') {
     const fact = typeof input.fact === 'string' ? input.fact.trim().replace(/\s+/g, ' ').slice(0, 200) : '';
@@ -183,12 +200,12 @@ function cleanHistory(rows: { role: string; content: string }[]): Msg[] {
 const SORRY = 'ขอเวลาน้องฮูสเช็กแป๊บนึงนะคะ ลองพิมพ์มาอีกครั้งได้เลยค่ะ 🙏';
 
 /** Answers one text message. Stores both turns as chat memory. Returns the reply and whether to attach the form card. */
-export async function answer(db: SupabaseClient, u: LineUser, userText: string): Promise<{ text: string; showForm: boolean }> {
+export async function answer(db: SupabaseClient, u: LineUser, userText: string): Promise<{ text: string; card: 'form' | 'survey' | 'status' | null }> {
   const { data: past } = await db.from('line_messages').select('role, content')
     .eq('line_user_id', u.line_user_id).order('id', { ascending: false }).limit(HISTORY);
   const messages: Msg[] = [...cleanHistory((past || []).reverse()), { role: 'user', content: userText }];
   const sys = system(u); // fixed for the whole tool loop
-  const extras: Extras = { showForm: false };
+  const extras: Extras = { card: null };
   let out = '';
   let dropBlocks = false;
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -207,12 +224,12 @@ export async function answer(db: SupabaseClient, u: LineUser, userText: string):
     for (const c of calls) results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(await runTool(db, u, c.name!, c.input || {}, extras)) });
     messages.push({ role: 'user', content: results });
   }
-  out = out || (extras.showForm ? 'กดปุ่ม "กรอกใบสมัคร" ด้านล่างได้เลยค่ะ ใช้เวลาแค่ 1 นาที ✨' : SORRY);
+  out = out || (extras.card ? 'ด้านล่างนี้เลยค่ะ 👇' : SORRY);
   await db.from('line_messages').insert([
     { line_user_id: u.line_user_id, role: 'user', content: userText.slice(0, 4000) },
     { line_user_id: u.line_user_id, role: 'assistant', content: out.slice(0, 4000) }
   ]);
-  return { text: out, showForm: extras.showForm };
+  return { text: out, card: extras.card };
 }
 
 export { SORRY };

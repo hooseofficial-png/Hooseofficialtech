@@ -1,8 +1,8 @@
-import ApplyForm from './ApplyForm';
+import LineApp from '../LineApp';
 import { liffId } from '@/lib/line-cards';
 
-// Read the LIFF id at request time so a Vercel env change needs no rebuild.
+// LIFF endpoint (current setting). Works for every view: ?view=apply|status|projects
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'HOOSE · ใบสมัคร' };
+export const metadata = { title: 'HOOSE' };
 
-export default function Page() { return <ApplyForm liffId={liffId()} />; }
+export default function Page() { return <LineApp liffId={liffId()} view="apply" />; }

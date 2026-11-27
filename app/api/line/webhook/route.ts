@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { getProfile, lineConfigured, reply, startLoading, text, verifySignature } from '@/lib/line';
-import { nextStepCard, welcomeCard } from '@/lib/line-cards';
+import { SURVEY, nextStepCard, statusCard, surveyCard, surveyDoneCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
 import { answer, SORRY, type LineUser } from '@/lib/line-agent';
 
 // HOOSE Official LINE OA webhook.
@@ -24,8 +24,14 @@ type LineEvent = {
 };
 
 const MENU = /^(เมนู|menu|เริ่มใหม่|start)$/i;
-const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory';
+const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory, survey, survey_done_at';
 const APPLY = /^(สมัคร|ใบสมัคร|apply|liff|ฟอร์ม|ฟอร์มสมัคร)$/i;
+const STATUS = /^(สถานะ|สถานะของฉัน|status|เช็กสถานะ|เช็คสถานะ)$/i;
+const SURVEY_RE = /^(แบบสอบถาม|survey)$/i;
+
+type Survey = Record<string, string | string[]>;
+/** First unanswered question, or -1 when all are answered. */
+function nextQuestion(s: Survey) { return SURVEY.findIndex(q => q.multi ? !(Array.isArray(s[q.key]) && s[q.key].length && s[q.key + '_done']) : !s[q.key]); }
 
 export async function POST(req: Request) {
   const raw = await req.text();
@@ -71,19 +77,30 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
     const q = new URLSearchParams(ev.postback?.data || '');
     if (q.get('action') === 'role' && ['editor', 'crew', 'manager'].includes(q.get('v') || '')) {
       const role = q.get('v')!;
-      await db.from('line_users').update({ role, status: u.status === 'new' ? 'applying' : u.status }).eq('line_user_id', userId);
-      await reply(ev.replyToken, [nextStepCard(role)]);
+      const status = u.status === 'new' ? 'applying' : u.status;
+      await db.from('line_users').update({ role, status }).eq('line_user_id', userId);
+      await reply(ev.replyToken, [withQuickMenu(nextStepCard(role), { ...u, role, status })]);
     }
+    if (q.get('action') === 'survey') await answerSurvey(db, u, q.get('q') || '', q.get('v') || '', ev.replyToken);
     return;
   }
 
   if (ev.type === 'message') {
     if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('ตอนนี้น้องฮูสอ่านได้เฉพาะข้อความตัวอักษรนะคะ ถ้าจะส่งผลงาน พิมพ์ "สมัคร" แล้วแนบลิงก์ในฟอร์มได้เลยค่ะ 😊')]); return; }
     const msg = (ev.message.text || '').trim();
-    if (MENU.test(msg)) { await reply(ev.replyToken, [welcomeCard(u.display_name)]); return; }
-    if (APPLY.test(msg)) { await reply(ev.replyToken, [u.role ? nextStepCard(u.role) : welcomeCard(u.display_name)]); return; }
+    const quick = (m: ReturnType<typeof text>) => withQuickMenu(m, u);
+    if (MENU.test(msg)) { await reply(ev.replyToken, [quick(welcomeCard(u.display_name))]); return; }
+    if (APPLY.test(msg)) { await reply(ev.replyToken, [quick(u.role ? nextStepCard(u.role) : welcomeCard(u.display_name))]); return; }
+    if (STATUS.test(msg)) { await reply(ev.replyToken, [quick(statusCard(u))]); return; }
+    if (SURVEY_RE.test(msg)) {
+      const i = nextQuestion((u.survey || {}) as Survey);
+      if (u.role !== 'editor') await reply(ev.replyToken, [quick(text('แบบสอบถามนี้สำหรับนักตัดต่อค่ะ 😊'))]);
+      else if (!['applied', 'interview'].includes(u.status)) await reply(ev.replyToken, [quick(text('ส่งใบสมัครก่อนนะคะ แล้วแบบสอบถามจะตามมาเลย 📝'))]);
+      else await reply(ev.replyToken, [i < 0 ? quick(text('ตอบแบบสอบถามครบแล้วค่ะ ขอบคุณมากนะคะ 🙏')) : surveyCard(i, (u.survey?.[SURVEY[i].key] as string[]) || [])]);
+      return;
+    }
     await startLoading(userId, 30);
-    let out = { text: SORRY, showForm: false };
+    let out: { text: string; card: string | null } = { text: SORRY, card: null };
     try { out = await answer(db, u, msg); }
     catch (e) {
       // Logged for the team (Vercel logs + admin page); the user only sees a friendly line.
@@ -92,7 +109,37 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       await db.from('line_users').update({ needs_attention: true, attention_note: 'ผู้ช่วยตอบไม่ได้: ' + why.slice(0, 300), attention_at: new Date().toISOString() }).eq('line_user_id', userId);
     }
     const msgs = [text(out.text)];
-    if (out.showForm && u.role) msgs.push(nextStepCard(u.role));
+    if (out.card === 'form' && u.role) msgs.push(nextStepCard(u.role));
+    if (out.card === 'status') msgs.push(statusCard(u));
+    if (out.card === 'survey') { const i = nextQuestion((u.survey || {}) as Survey); if (i >= 0) msgs.push(surveyCard(i, (u.survey?.[SURVEY[i].key] as string[]) || [])); }
+    msgs[msgs.length - 1] = quick(msgs[msgs.length - 1]);
     await reply(ev.replyToken, msgs);
   }
+}
+
+/** Saves one tapped answer and replies with the next question (reply messages are free). */
+async function answerSurvey(db: ReturnType<typeof sbAdmin>, u: LineUser, key: string, value: string, replyToken: string) {
+  const qi = SURVEY.findIndex(q => q.key === key);
+  if (qi < 0 || u.role !== 'editor') return;
+  const q = SURVEY[qi];
+  const survey: Survey = { ...((u.survey || {}) as Survey) };
+  if (q.multi) {
+    const cur = Array.isArray(survey[key]) ? [...(survey[key] as string[])] : [];
+    if (value === '__done') {
+      if (!cur.length) { await reply(replyToken, [surveyCard(qi, cur)]); return; }
+      survey[key + '_done'] = '1';
+    } else if ((q.options as readonly (readonly [string, string])[]).some(([v]) => v === value)) {
+      survey[key] = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
+      await db.from('line_users').update({ survey }).eq('line_user_id', u.line_user_id);
+      await reply(replyToken, [surveyCard(qi, survey[key] as string[])]);
+      return;
+    } else return;
+  } else {
+    if (!(q.options as readonly (readonly [string, string])[]).some(([v]) => v === value)) return;
+    survey[key] = value;
+  }
+  const next = nextQuestion(survey);
+  const done = next < 0;
+  await db.from('line_users').update({ survey, ...(done && !u.survey_done_at ? { survey_done_at: new Date().toISOString() } : {}) }).eq('line_user_id', u.line_user_id);
+  await reply(replyToken, [done ? withQuickMenu(surveyDoneCard(), { ...u, survey_done_at: 'x' }) : surveyCard(next, (survey[SURVEY[next].key] as string[]) || [])]);
 }
