@@ -15,7 +15,7 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
   const [denied, setDenied] = useState(false); const [missing, setMissing] = useState(false);
   const [note, setNote] = useState(''); const [memory, setMemory] = useState('');
   const [pick, setPick] = useState<string | null>(null); const [notify, setNotify] = useState(''); const [send, setSend] = useState(true);
-  const [iv, setIv] = useState('');
+  const [iv, setIv] = useState(''); const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function load() {
@@ -105,6 +105,16 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="card">
+        <h2>ตอบแชท 💬</h2>
+        <span className="mut" style={{ fontSize: 12 }}>ส่งข้อความจากทีม HOOSE ถึงคนนี้ทาง LINE (นับโควตา push 1 ข้อความ) · ขึ้นในประวัติแชทด้านล่าง</span>
+        <textarea className="in-t" style={{ height: 80, padding: 10 }} value={msg} onChange={e => setMsg(e.target.value)} placeholder="พิมพ์ข้อความ…" />
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn p sm" disabled={busy || !msg.trim()} onClick={async () => { await save({ notify: msg, ...(u.needs_attention ? { resolve: true } : {}) }, 'ส่งแล้ว'); setMsg(''); }}>ส่งทาง LINE</button>
+          {u.needs_attention && <span className="mut" style={{ fontSize: 12 }}>ส่งแล้วจะปิดเรื่อง “รอทีมตอบ” ให้อัตโนมัติ</span>}
+        </div>
       </section>
 
       <section className="card">
