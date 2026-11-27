@@ -8,11 +8,14 @@ export const STATUS_TH: Record<string, string> = {
 export const STATUS_CHIP: Record<string, string> = {
   new: 'chip o', applying: 'chip', applied: 'chip b', interview: 'chip lb', approved: 'chip k', rejected: 'chip o', active: 'chip k', blocked: 'chip o'
 };
-/** Default LINE message offered when an admin moves someone to that status (editable before sending). */
-export const NOTIFY: Record<string, (name: string) => string> = {
-  interview: n => `สวัสดีคุณ${n} ทีม HOOSE ดูผลงานแล้วและอยากนัดคุยเพิ่มเติม สะดวกวันและเวลาไหนบ้าง ตอบกลับในแชทนี้ได้เลย`,
-  approved: n => `ยินดีด้วยคุณ${n} ใบสมัครของคุณผ่านการพิจารณากับ HOOSE แล้ว จากนี้คุณจะได้รับประกาศ Open Call ที่ตรงตำแหน่งในแชทนี้`,
-  rejected: n => `ขอบคุณคุณ${n} ที่สนใจร่วมงานกับ HOOSE รอบนี้ยังไม่ตรงกับงานที่เปิดอยู่ ทีมจะเก็บข้อมูลไว้และติดต่อกลับเมื่อมีงานที่เหมาะ`,
-  active: n => `คุณ${n} ลงทะเบียนเป็นทีมงาน HOOSE เรียบร้อยแล้ว เมื่อมีงานที่ตรงตำแหน่ง ระบบจะส่ง Open Call มาในแชทนี้`
+/** Default LINE message per status (editable before sending). It goes out inside a Flex card with the right button. */
+export const NOTIFY: Record<string, (name: string, role?: string | null) => string> = {
+  interview: n => `คุณ${n} ผ่านรอบดูผลงานแล้วค่ะ 🎬 ทีม HOOSE อยากคุยกันเพิ่มอีกนิด กดปุ่มด้านล่างเพื่อเลือกเวลาสัมภาษณ์ที่สะดวกได้เลยนะคะ 😊`,
+  approved: (n, r) => r === 'crew'
+    ? `ยินดีด้วยค่ะคุณ${n} 🎉 ผ่านการคัดเลือกแล้ว ขั้นสุดท้ายคือสมัครบัญชีในแอป HOOSE เพื่อรับงาน Open Call ที่ตรงตำแหน่งนะคะ 💙`
+    : `ยินดีด้วยค่ะคุณ${n} 🎉 ผ่านการสัมภาษณ์แล้ว รบกวนกรอกข้อมูลทีมงานในฟอร์มด้านล่างให้หน่อยนะคะ แล้วเตรียมรับงานแรกได้เลย 💙`,
+  rejected: n => `ขอบคุณคุณ${n} มาก ๆ ที่สนใจร่วมงานกับ HOOSE นะคะ 🙏 รอบนี้ยังไม่ตรงกับงานที่เปิดอยู่ ทีมเก็บผลงานไว้แล้ว ถ้ามีงานที่เหมาะจะรีบติดต่อกลับเลยค่ะ`,
+  active: n => `คุณ${n} เป็นทีมงาน HOOSE เรียบร้อยแล้ว 💙 มีงานที่ตรงตำแหน่งเมื่อไหร่ น้องฮูสจะส่ง Open Call มาในแชทนี้ทันทีค่ะ ✨`
 };
+export const SURVEY_Q: Record<string, string> = { style: 'สไตล์', per_week: 'ต่อสัปดาห์', work: 'รูปแบบงาน', apps: 'โปรแกรม' };
 export const fmt = (s?: string | null) => s ? new Date(s).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '–';

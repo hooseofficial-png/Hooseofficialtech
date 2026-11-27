@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { push, verifyIdToken } from '@/lib/line';
-import { appliedCard } from '@/lib/line-cards';
+import { appliedCard, surveyCard, withQuickMenu } from '@/lib/line-cards';
 
 // Application form submitted from the LIFF page (/line/apply).
 // The LIFF ID token proves which LINE user is applying, so nobody can submit for someone else.
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   if (body.consent !== true) return NextResponse.json({ error: 'กรุณายินยอมให้เก็บข้อมูล (PDPA)' }, { status: 400 });
 
   const db = sbAdmin();
-  const { data: cur } = await db.from('line_users').select('status, display_name').eq('line_user_id', who.sub).maybeSingle();
+  const { data: cur } = await db.from('line_users').select('status, display_name, survey_done_at').eq('line_user_id', who.sub).maybeSingle();
   const now = new Date().toISOString();
   const keep = cur && LATER.includes(cur.status);
   const row = {
@@ -49,6 +49,9 @@ export async function POST(req: Request) {
   if (error) { console.error('apply upsert', error.message); return NextResponse.json({ error: 'บันทึกไม่สำเร็จ ลองอีกครั้ง' }, { status: 500 }); }
 
   await db.from('line_messages').insert({ line_user_id: who.sub, role: 'user', content: `[ส่งใบสมัคร] ${role} · ${position} · ${portfolio_url}` });
-  try { await push(who.sub, [appliedCard(full_name, role)]); } catch (e) { console.error('apply push', (e as Error).message); }
+  const needSurvey = role === 'editor' && !cur?.survey_done_at;
+  const status = keep ? cur!.status : 'applied';
+  const msgs = needSurvey ? [appliedCard(full_name, role), surveyCard(0)] : [withQuickMenu(appliedCard(full_name, role), { role, status, survey_done_at: cur?.survey_done_at })];
+  try { await push(who.sub, msgs); } catch (e) { console.error('apply push', (e as Error).message); }
   return NextResponse.json({ ok: true });
 }
