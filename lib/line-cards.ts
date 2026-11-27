@@ -45,12 +45,30 @@ export function welcomeCard(name?: string): LineMessage {
     ]);
 }
 
+/** Opens the application form (LIFF) inside LINE. Needs NEXT_PUBLIC_LIFF_ID. */
+export function applyUrl(role: string) {
+  const id = process.env.NEXT_PUBLIC_LIFF_ID;
+  return id ? `https://liff.line.me/${id}?role=${encodeURIComponent(role)}` : '';
+}
+
 export function nextStepCard(role: string): LineMessage {
-  if (role === 'editor') return card('สมัครนักตัดต่อ · ขั้นที่ 1', 'สมัครนักตัดต่อกับ HOOSE',
-    ['ขั้นที่ 1 ส่งลิงก์ผลงาน (Portfolio หรือ Showreel) มาในแชทนี้', '2 ทำแบบสอบถาม · 3 นัดสัมภาษณ์ · 4 แจ้งผล · 5 ลงทะเบียนรับงาน'], []);
-  if (role === 'crew') return card('สมัครทีมโปรดักชัน · ขั้นที่ 1', 'สมัครทีมโปรดักชัน HOOSE',
-    ['ขั้นที่ 1 พิมพ์ตำแหน่งงานของคุณ (เช่น DOP, Gaffer, Props Master, PA) พร้อมลิงก์ผลงาน', 'เมื่อได้รับอนุมัติ คุณจะได้รับประกาศ Open Call ที่ตรงตำแหน่งในแชทนี้'], []);
+  if (role === 'editor' || role === 'crew') {
+    const url = applyUrl(role);
+    const who = role === 'editor' ? 'นักตัดต่อ' : 'ทีมโปรดักชัน';
+    return card(`สมัคร${who} · กรอกใบสมัคร`, `สมัคร${who}กับ HOOSE`,
+      url
+        ? ['ขั้นที่ 1 กรอกใบสมัคร: ชื่อ เบอร์ อีเมล ตำแหน่ง และลิงก์ผลงาน (ใช้เวลาประมาณ 1 นาที)',
+           role === 'editor' ? 'ถัดไป: แบบสอบถาม · นัดสัมภาษณ์ · แจ้งผล · ลงทะเบียนรับงาน' : 'เมื่อได้รับอนุมัติ คุณจะได้รับประกาศ Open Call ที่ตรงตำแหน่งในแชทนี้']
+        : [role === 'editor' ? 'ขั้นที่ 1 ส่งลิงก์ผลงาน (Portfolio หรือ Showreel) มาในแชทนี้' : 'ขั้นที่ 1 พิมพ์ตำแหน่งงานของคุณ (เช่น DOP, Gaffer, Props Master, PA) พร้อมลิงก์ผลงาน'],
+      url ? [{ label: 'กรอกใบสมัคร', uri: url, primary: true }] : []);
+  }
   return card('PM / Producer · เปิดแอป HOOSE', 'สำหรับ PM / Producer',
-    ['จัดการโปรเจกต์ ทีมงาน ปฏิทิน และงบ ได้ที่แอป HOOSE', 'ส่ง Open Call จากหน้าทีมงาน แล้วระบบจะประกาศผ่าน LINE ให้'],
-    [{ label: 'เปิดแอป HOOSE', uri: SITE, primary: true }]);
+    ['จัดการโปรเจกต์ ทีมงาน ปฏิทิน และงบ ได้ที่แอป HOOSE', 'ยังไม่มีบัญชี? สมัครได้ฟรี แล้วส่ง Open Call จากหน้าทีมงานผ่าน LINE ได้เลย'],
+    [{ label: 'สมัคร / เข้าแอป HOOSE', uri: SITE + '/login?mode=signup', primary: true }]);
+}
+
+export function appliedCard(name: string, role: string): LineMessage {
+  return card('ได้รับใบสมัครแล้ว', `ได้รับใบสมัครของคุณ${name ? ' ' + name : ''}แล้ว`,
+    [role === 'editor' ? 'ทีม HOOSE จะตรวจผลงานและแจ้งขั้นถัดไป (แบบสอบถาม / นัดสัมภาษณ์) ในแชทนี้' : 'ทีม HOOSE จะตรวจผลงานและแจ้งผลในแชทนี้',
+     'ระหว่างนี้พิมพ์ถามเรื่องขั้นตอนได้ตลอด'], []);
 }

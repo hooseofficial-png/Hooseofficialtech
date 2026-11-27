@@ -46,6 +46,25 @@ export function multicast(to: string[], messages: LineMessage[]) {
   return call('/message/multicast', { to: to.slice(0, 500), messages: messages.slice(0, 5) });
 }
 
+/** "Typing…" dots in a 1:1 chat while the reply is prepared. Free; disappears when a message is sent. */
+export async function startLoading(userId: string, seconds = 20) {
+  try { await call('/chat/loading/start', { chatId: userId, loadingSeconds: Math.min(60, Math.max(5, Math.round(seconds / 5) * 5)) }); }
+  catch (e) { console.error('line loading failed', (e as Error).message); }
+}
+
+/** Checks a LIFF ID token with LINE and returns the LINE user id (sub). Env: LINE_LOGIN_CHANNEL_ID. */
+export async function verifyIdToken(idToken: string): Promise<{ sub: string; name?: string; email?: string } | null> {
+  const clientId = process.env.LINE_LOGIN_CHANNEL_ID;
+  if (!clientId || !idToken) return null;
+  const res = await fetch('https://api.line.me/oauth2/v2.1/verify', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ id_token: idToken, client_id: clientId })
+  });
+  if (!res.ok) return null;
+  const j = await res.json();
+  return j?.sub ? { sub: j.sub, name: j.name, email: j.email } : null;
+}
+
 export async function getProfile(userId: string): Promise<{ displayName: string; pictureUrl?: string } | null> {
   try { return await (await call('/profile/' + encodeURIComponent(userId), undefined, 'GET')).json(); }
   catch { return null; }
