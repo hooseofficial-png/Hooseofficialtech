@@ -1,14 +1,16 @@
-// ClickUp API (server only). Env: CLICKUP_API_TOKEN (personal token, ClickUp → Settings → Apps),
+// ClickUp API (server only). Env: CLICKUP_API_TOKEN (or ClickUpAPIToken) (personal token, ClickUp → Settings → Apps),
 // CLICKUP_LIST_IDS (comma-separated; default: (Advanced) · รายชื่อลูกค้า).
 
 const API = 'https://api.clickup.com/api/v2';
 export const EDIT_LISTS = (process.env.CLICKUP_LIST_IDS || '901805543973').split(',').map(s => s.trim()).filter(Boolean);
-export const clickupConfigured = () => !!process.env.CLICKUP_API_TOKEN;
+/** Token from Vercel env (either name works). */
+const token = () => process.env.CLICKUP_API_TOKEN || process.env.ClickUpAPIToken || '';
+export const clickupConfigured = () => !!token();
 
 async function cu(path: string, init: RequestInit = {}) {
   const res = await fetch(API + path, {
     ...init,
-    headers: { Authorization: process.env.CLICKUP_API_TOKEN || '', 'Content-Type': 'application/json', ...(init.headers || {}) },
+    headers: { Authorization: token(), 'Content-Type': 'application/json', ...(init.headers || {}) },
     cache: 'no-store'
   });
   if (!res.ok) throw new Error(`ClickUp ${path.split('?')[0]} ${res.status}: ${(await res.text()).slice(0, 200)}`);
