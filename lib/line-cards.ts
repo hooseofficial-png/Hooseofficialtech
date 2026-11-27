@@ -7,6 +7,8 @@ const BLUE = '#0D00FF';
 const INK = '#0E0E1A';
 const GREY = '#6B6E7E';
 export const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.hooseofficial.site';
+/** Editor application (Google Form), opened from the "กรอกใบสมัคร" button. */
+export const EDITOR_APPLY_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLScDwPK3KVaD4aiR8Kig3Cu3h7sb2yeuxWp4SQNznXCkgfVkUQ/viewform?usp=dialog';
 /** Step 5 for editors who passed: onboarding form. */
 export const EDITOR_ONBOARD_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSdHE25F9u1ZPgTdwRUk_jWRhKETLMuz2BH0WR3XSatNxs2qqA/viewform?usp=header';
 
@@ -54,21 +56,19 @@ export const applyUrl = (role: string) => liffUrl('apply', { role });
 
 type QR = { label: string; uri?: string; text?: string };
 
-/** Adds the quick-reply buttons to a message. Free; they disappear after the user taps or sends anything. */
+/** Adds quick-reply buttons for people who already passed (status / projects). Others get the message unchanged. */
 export function withQuickMenu(m: LineMessage, u: { role: string | null; status: string; survey_done_at?: string | null }): LineMessage {
+  if (!['approved', 'active'].includes(u.status)) return m;
   const items: QR[] = [];
   const status = liffUrl('status'); const projects = liffUrl('projects');
-  if (status) items.push({ label: '📋 สถานะของฉัน', uri: status });
-  if (projects && ['approved', 'active'].includes(u.status)) items.push({ label: '🎬 อัปเดตโปรเจกต์', uri: projects });
-  if (!u.role) items.push({ label: '👋 เลือกบทบาท', text: 'เมนู' });
-  else if (['new', 'applying'].includes(u.status) && u.role !== 'manager') items.push({ label: '📝 กรอกใบสมัคร', text: 'สมัคร' });
-  else if (u.role === 'editor' && u.status === 'applied' && !u.survey_done_at) items.push({ label: '✍️ ทำแบบสอบถาม', text: 'แบบสอบถาม' });
-  items.push({ label: '💬 เมนู', text: 'เมนู' });
-  return {
-    ...m,
-    quickReply: { items: items.slice(0, 13).map(i => ({ type: 'action', action: i.uri ? { type: 'uri', label: i.label, uri: i.uri } : { type: 'message', label: i.label, text: i.text } })) }
-  };
+  if (status) items.push({ label: '📋 สถานะงานของฉัน', uri: status });
+  if (projects) items.push({ label: '🎬 อัปเดตโปรเจกต์', uri: projects });
+  if (!items.length) return m;
+  return { ...m, quickReply: { items: items.map(i => ({ type: 'action', action: { type: 'uri', label: i.label, uri: i.uri } })) } };
 }
+
+/** Sent when an applicant finishes (portfolio received). */
+export const DONE_TEXT = 'เสร็จสิ้นแล้วค่ะ ✅ ทีมงานกำลังรีวิวคำตอบของคุณ รอรับการอัปเดตในแชทนี้ได้เลยนะคะ 💙';
 
 // ---------- funnel cards ----------
 
@@ -84,17 +84,10 @@ export function welcomeCard(name?: string): LineMessage {
 }
 
 export function nextStepCard(role: string): LineMessage {
-  if (role === 'editor' || role === 'crew') {
-    const url = applyUrl(role);
-    const who = role === 'editor' ? 'นักตัดต่อ' : 'ทีมโปรดักชัน';
-    const steps = role === 'editor'
-      ? '① ข้อมูลส่วนตัว + ผลงาน → ② แบบสอบถามสั้น ๆ 4 ข้อ → ③ รอผล 1-3 วัน → ④ สัมภาษณ์'
-      : '① ข้อมูลส่วนตัว + ผลงาน → ② ทีมพิจารณา → ③ ผ่านแล้วสมัครบัญชีในแอป HOOSE';
-    return card(`สมัคร${who} · กรอกใบสมัคร`, `มาเริ่มสมัคร${who}กันเลย ✨`,
-      url ? ['ขอทำความรู้จักนิดนึงนะคะ ใช้เวลาประมาณ 1 นาที', steps]
-          : ['ส่งลิงก์ผลงาน (Portfolio / Showreel) พร้อมบอกตำแหน่งมาในแชทนี้ได้เลยค่ะ', steps],
-      url ? [{ label: '📝 กรอกใบสมัคร', uri: url, primary: true }] : []);
-  }
+  if (role === 'editor') return card('สมัครนักตัดต่อ · กรอกใบสมัคร', 'มาเริ่มสมัครนักตัดต่อกันเลย ✨',
+    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② กรอกเสร็จแล้ว ส่งลิงก์ผลงานมาในแชทนี้ได้เลยค่ะ 🎬'],
+    [{ label: '📝 กรอกใบสมัคร', uri: EDITOR_APPLY_FORM, primary: true }]);
+  if (role === 'crew') return { type: 'text', text: 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊' };
   return card('PM / Producer · เปิดแอป HOOSE', 'สำหรับ PM / Producer 📁',
     ['จัดการโปรเจกต์ ทีมงาน ปฏิทิน และงบ ได้ที่แอป HOOSE', 'ยังไม่มีบัญชี? สมัครฟรี แล้วส่ง Open Call ผ่าน LINE ได้เลยค่ะ'],
     [{ label: 'สมัคร / เข้าแอป HOOSE', uri: SITE + '/login?mode=signup', primary: true }]);

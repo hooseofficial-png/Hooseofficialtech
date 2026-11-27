@@ -2,17 +2,16 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import TopBar from '@/components/TopBar';
-import { NOTIFY, ROLE_TH, STATUS_TH, STATUS_CHIP, SURVEY_Q, fmt } from '@/lib/admin-ui';
-import { SURVEY_LABEL } from '@/lib/line-cards';
+import { NOTIFY, ROLE_TH, STATUS_TH, STATUS_CHIP, fmt } from '@/lib/admin-ui';
 import { toast } from '@/lib/ui';
 
-type U = { line_user_id: string; display_name: string; full_name: string; phone: string; email: string; role: string | null; status: string; position: string; portfolio_url: string; following: boolean; last_seen_at: string; applied_at: string | null; needs_attention: boolean; attention_note: string; survey: Record<string, string | string[]>; survey_done_at: string | null; picture_url: string };
+type U = { line_user_id: string; display_name: string; full_name: string; phone: string; email: string; role: string | null; status: string; position: string; portfolio_url: string; following: boolean; last_seen_at: string; applied_at: string | null; created_at: string; status_changed_at: string | null; needs_attention: boolean; attention_note: string; survey: Record<string, string | string[]>; survey_done_at: string | null; picture_url: string };
 const FUNNEL = ['new', 'applying', 'applied', 'interview', 'approved', 'active'];
 
 export default function LineAdmin() {
   const [users, setUsers] = useState<U[] | null>(null);
   const [denied, setDenied] = useState(false);
-  const [mode, setMode] = useState<'review' | 'all'>('review');
+  const [mode, setMode] = useState<'overview' | 'review' | 'team' | 'all'>('overview');
   const [role, setRole] = useState('all'); const [status, setStatus] = useState('all'); const [q, setQ] = useState('');
   const load = () => fetch('/api/admin/line').then(async r => {
     if (r.status === 403 || r.status === 401) { setDenied(true); return; }
@@ -30,12 +29,16 @@ export default function LineAdmin() {
   if (denied) return <><TopBar label="Admin" /><main className="wrap"><div className="empty">หน้านี้สำหรับแอดมิน HOOSE เท่านั้น</div></main></>;
   return (
     <><TopBar label="Admin · LINE OA" /><main className="wrap">
-      <div className="between"><h1>ผู้สมัครจาก LINE OA</h1><span className="mut" style={{ fontSize: 13 }}>{users ? `${users.length} คน` : ''}</span></div>
+      <div className="between"><h1>แดชบอร์ด LINE OA</h1><span className="mut" style={{ fontSize: 13 }}>{users ? `${users.length} คน` : ''}</span></div>
       <div className="seg" role="tablist" style={{ alignSelf: 'flex-start' }}>
+        <button className={mode === 'overview' ? 'on' : ''} onClick={() => setMode('overview')}>ภาพรวม</button>
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>ตรวจผลงาน ({(users || []).filter(u => u.status === 'applied').length})</button>
-        <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>ผู้สมัครทั้งหมด</button>
+        <button className={mode === 'team' ? 'on' : ''} onClick={() => setMode('team')}>ทีมงาน</button>
+        <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>ทั้งหมด</button>
       </div>
-      {mode === 'review' ? <Review users={users} reload={load} /> : <>
+      {mode === 'overview' ? <Overview users={users} go={(m, st) => { setMode(m); if (st) setStatus(st); }} />
+      : mode === 'team' ? <Team users={users} />
+      : mode === 'review' ? <Review users={users} reload={load} /> : <>
       <div className="seg" role="group" aria-label="บทบาท" style={{ alignSelf: 'flex-start' }}>
         {[['all', 'ทั้งหมด'], ['editor', 'นักตัดต่อ'], ['crew', 'ทีมโปรดักชัน'], ['manager', 'PM / Producer'], ['none', 'ยังไม่เลือก']].map(([k, l]) =>
           <button key={k} className={role === k ? 'on' : ''} onClick={() => setRole(k)}>{l}</button>)}
@@ -81,63 +84,144 @@ export default function LineAdmin() {
   );
 }
 
-/** Review queue: applicants waiting for a decision, with portfolio and questionnaire side by side. */
+/** Review queue: applicants waiting for a decision. Only the portfolio and two buttons. */
 function Review({ users, reload }: { users: U[] | null; reload: () => void }) {
-  const [iv, setIv] = useState(() => { try { return localStorage.getItem('hoose_iv') || ''; } catch { return ''; } });
   const [busy, setBusy] = useState('');
-  const queue = (users || []).filter(u => u.status === 'applied')
-    .sort((a, b) => Number(!!b.survey_done_at || b.role === 'crew') - Number(!!a.survey_done_at || a.role === 'crew') || (a.applied_at || '').localeCompare(b.applied_at || ''));
-  async function decide(u: U, status: string) {
-    if (status === 'interview' && !/^https:\/\//.test(iv)) { toast('ใส่ลิงก์นัดสัมภาษณ์ด้านบนก่อน'); return; }
-    const name = u.full_name || u.display_name;
-    if (!confirm(`${STATUS_TH[status]}: ${name}\nจะส่งการ์ดแจ้งทาง LINE ทันที`)) return;
+  const queue = (users || []).filter(u => u.status === 'applied').sort((a, b) => (a.applied_at || '').localeCompare(b.applied_at || ''));
+  async function decide(u: U, status: 'approved' | 'rejected') {
+    const name = u.full_name || u.display_name || 'ผู้สมัคร';
+    if (!confirm(`${status === 'approved' ? 'ยืนยัน' : 'ปฏิเสธ'}: ${name}\nจะแจ้งผลทาง LINE ทันที`)) return;
     setBusy(u.line_user_id);
-    try { localStorage.setItem('hoose_iv', iv); } catch { /* ignore */ }
     const r = await fetch(`/api/admin/line/${u.line_user_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, notify: NOTIFY[status](name, u.role), ...(status === 'interview' ? { interview_url: iv } : {}) }) });
+      body: JSON.stringify({ status, notify: NOTIFY[status](name, u.role) }) });
     const j = await r.json().catch(() => ({})); setBusy('');
-    toast(!r.ok ? (j.error || 'ไม่สำเร็จ') : j.sendError ? 'เปลี่ยนสถานะแล้ว แต่ส่ง LINE ไม่สำเร็จ' : `${STATUS_TH[status]} · ส่งการ์ดแจ้ง ${name} แล้ว`);
+    toast(!r.ok ? (j.error || 'ไม่สำเร็จ') : j.sendError ? 'บันทึกแล้ว แต่ส่ง LINE ไม่สำเร็จ' : `${status === 'approved' ? 'ยืนยัน' : 'ปฏิเสธ'} ${name} · แจ้งทาง LINE แล้ว`);
     reload();
   }
   if (!users) return <div className="empty">กำลังโหลด…</div>;
+  if (!queue.length) return <div className="empty">ไม่มีผลงานรอตรวจ 🎉</div>;
+  return <>{queue.map(u => {
+    const name = u.full_name || u.display_name || 'ไม่ทราบชื่อ';
+    return (
+      <section key={u.line_user_id} className="card" style={{ gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+          {u.picture_url ? <img src={u.picture_url} alt="" className="av" style={{ objectFit: 'cover' }} /> : <span className="av">{name[0]}</span>}
+          <div style={{ minWidth: 0 }}>
+            <Link href={`/admin/line/${u.line_user_id}`} className="ell" style={{ fontWeight: 700, color: 'var(--ink)', display: 'block' }}>{name}</Link>
+            <span className="mut" style={{ fontSize: 12 }}>{u.role ? ROLE_TH[u.role] : '–'}{u.position ? ' · ' + u.position : ''} · ส่ง {fmt(u.applied_at)}</span>
+          </div>
+        </div>
+        {u.portfolio_url
+          ? <a href={u.portfolio_url} target="_blank" rel="noreferrer" className="ell" style={{ color: 'var(--blue)', fontWeight: 600 }}>▶ {u.portfolio_url}</a>
+          : <span className="mut">ยังไม่มีลิงก์ผลงาน</span>}
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn p sm" disabled={!!busy} onClick={() => decide(u, 'approved')}>✓ ยืนยัน</button>
+          <button className="btn sm ghost" disabled={!!busy} onClick={() => decide(u, 'rejected')}>ปฏิเสธ</button>
+        </div>
+      </section>);
+  })}</>;
+}
+
+const DAY = 86400000;
+const since = (iso: string | null | undefined, days: number) => !!iso && Date.now() - new Date(iso).getTime() < days * DAY;
+
+/** Overview: what needs doing now, this week's numbers, and an 8-week trend. */
+function Overview({ users, go }: { users: U[] | null; go: (m: 'review' | 'all' | 'team', status?: string) => void }) {
+  if (!users) return <div className="empty">กำลังโหลด…</div>;
+  const applicants = users.filter(u => u.role === 'editor' || u.role === 'crew');
+  const waiting = applicants.filter(u => u.status === 'applied');
+  const oldest = waiting.reduce<string | null>((m, u) => !u.applied_at ? m : !m || u.applied_at < m ? u.applied_at : m, null);
+  const attention = users.filter(u => u.needs_attention);
+  const decided = applicants.filter(u => ['approved', 'active', 'rejected', 'interview'].includes(u.status));
+  const passed = applicants.filter(u => ['approved', 'active', 'interview'].includes(u.status));
+  const stuck = applicants.filter(u => u.status === 'applying' && !since(u.last_seen_at, 3));
+  const byRole = (r: string) => {
+    const a = applicants.filter(u => u.role === r);
+    return { total: a.length, waiting: a.filter(u => u.status === 'applied').length, team: a.filter(u => ['approved', 'active'].includes(u.status)).length };
+  };
+  const weeks = Array.from({ length: 8 }, (_, i) => {
+    const end = Date.now() - i * 7 * DAY, start = end - 7 * DAY;
+    const inWeek = (iso: string | null) => !!iso && +new Date(iso) >= start && +new Date(iso) < end;
+    return { label: i === 0 ? 'สัปดาห์นี้' : `${i} สัปดาห์ก่อน`, follows: users.filter(u => inWeek(u.created_at)).length, applied: applicants.filter(u => inWeek(u.applied_at)).length };
+  }).reverse();
+  const max = Math.max(1, ...weeks.map(w => Math.max(w.follows, w.applied)));
+  const tile = (label: string, value: string | number, sub: string, onClick?: () => void, hot = false) => (
+    <button className="card" onClick={onClick} disabled={!onClick}
+      style={{ padding: 14, gap: 4, textAlign: 'left', cursor: onClick ? 'pointer' : 'default', borderColor: hot ? 'var(--blue)' : undefined }}>
+      <span className="mut" style={{ fontSize: 12 }}>{label}</span>
+      <b style={{ fontSize: 26, color: hot ? 'var(--blue)' : 'var(--ink)' }}>{value}</b>
+      <span className="mut" style={{ fontSize: 12 }}>{sub}</span>
+    </button>);
   return (
     <>
-      <section className="card" style={{ gap: 6 }}>
-        <label className="f">ลิงก์นัดสัมภาษณ์ที่ใช้ส่งให้ผู้ผ่านรอบผลงาน (Calendly / Google Calendar booking / Meet)
-          <input className="in-t" placeholder="https://" value={iv} onChange={e => setIv(e.target.value)} /></label>
-        <span className="mut" style={{ fontSize: 12 }}>นักตัดต่อ: ผ่าน → ได้การ์ดนัดสัมภาษณ์ · ทีมโปรดักชัน: อนุมัติ → ได้การ์ดสมัครบัญชีแอป HOOSE · แก้ข้อความเองได้ในหน้ารายคน</span>
+      <h2 style={{ margin: 0 }}>ต้องทำตอนนี้</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+        {tile('รอตรวจผลงาน', waiting.length, oldest ? `เก่าสุดส่งเมื่อ ${fmt(oldest)}` : 'ไม่มีค้าง', () => go('review'), waiting.length > 0)}
+        {tile('รอทีมตอบในแชท', attention.length, 'คำถามที่น้องฮูสส่งต่อ', () => go('all', 'attention'), attention.length > 0)}
+        {tile('สมัครค้างกลางทาง', stuck.length, 'เลือกบทบาทแล้วแต่ไม่ส่งผลงาน > 3 วัน', () => go('all', 'applying'))}
+      </div>
+      <h2 style={{ margin: '8px 0 0' }}>7 วันที่ผ่านมา</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+        {tile('เพิ่มเพื่อนใหม่', users.filter(u => since(u.created_at, 7)).length, 'คน')}
+        {tile('ส่งผลงาน', applicants.filter(u => since(u.applied_at, 7)).length, 'ใบสมัคร')}
+        {tile('ยืนยันแล้ว', applicants.filter(u => ['approved', 'active'].includes(u.status) && since(u.status_changed_at, 7)).length, 'คน')}
+        {tile('อัตราผ่าน (ทั้งหมด)', decided.length ? Math.round(passed.length / decided.length * 100) + '%' : '–', `${passed.length} จาก ${decided.length} ที่ตัดสินแล้ว`)}
+      </div>
+      <section className="card">
+        <h2>แยกตามบทบาท</h2>
+        <div className="tblw"><table className="tbl">
+          <thead><tr><th>บทบาท</th><th>ทั้งหมด</th><th>รอตรวจ</th><th>ทีมงานที่ผ่านแล้ว</th></tr></thead>
+          <tbody>{(['editor', 'crew'] as const).map(r => { const x = byRole(r); return (
+            <tr key={r}><td>{ROLE_TH[r]}</td><td>{x.total}</td><td>{x.waiting}</td><td><b>{x.team}</b></td></tr>); })}</tbody>
+        </table></div>
       </section>
-      {queue.length === 0 ? <div className="empty">ไม่มีผลงานรอตรวจ 🎉</div> : queue.map(u => {
-        const name = u.full_name || u.display_name || 'ไม่ทราบชื่อ';
-        const waitingSurvey = u.role === 'editor' && !u.survey_done_at;
-        return (
-          <section key={u.line_user_id} className="card" style={{ gap: 10 }}>
-            <div className="between" style={{ gap: 10 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
-                {u.picture_url ? <img src={u.picture_url} alt="" className="av" style={{ objectFit: 'cover' }} /> : <span className="av">{name[0]}</span>}
-                <div style={{ minWidth: 0 }}>
-                  <Link href={`/admin/line/${u.line_user_id}`} className="ell" style={{ fontWeight: 700, color: 'var(--ink)', display: 'block' }}>{name}</Link>
-                  <span className="mut" style={{ fontSize: 12 }}>{u.role ? ROLE_TH[u.role] : '–'}{u.position ? ' · ' + u.position : ''} · ส่ง {fmt(u.applied_at)}</span>
-                </div>
-              </div>
-              {waitingSurvey ? <span className="chip o">รอตอบแบบสอบถาม</span> : <span className="chip b">พร้อมตรวจ</span>}
-            </div>
-            {u.portfolio_url && <a href={u.portfolio_url} target="_blank" rel="noreferrer" className="btn sm" style={{ alignSelf: 'flex-start' }}>▶ ดูผลงาน</a>}
-            {u.role === 'editor' && (
-              <div className="row w" style={{ gap: 6 }}>
-                {Object.keys(SURVEY_Q).map(k => { const v = u.survey?.[k]; if (!v || (Array.isArray(v) && !v.length)) return null;
-                  const l = SURVEY_LABEL[k]; const t = Array.isArray(v) ? v.map(x => l[x] || x).join(', ') : l[v] || v;
-                  return <span key={k} className="chip lb">{SURVEY_Q[k]}: {t}</span>; })}
-              </div>
-            )}
-            <div className="row w" style={{ gap: 8 }}>
-              {u.role === 'crew'
-                ? <button className="btn p sm" disabled={!!busy} onClick={() => decide(u, 'approved')}>✓ อนุมัติ</button>
-                : <button className="btn p sm" disabled={!!busy} onClick={() => decide(u, 'interview')}>✓ ผ่าน → นัดสัมภาษณ์</button>}
-              <button className="btn sm ghost" disabled={!!busy} onClick={() => decide(u, 'rejected')}>ไม่ผ่าน</button>
-            </div>
-          </section>);
-      })}
+      <section className="card">
+        <div className="between"><h2>8 สัปดาห์ล่าสุด</h2>
+          <span className="row" style={{ gap: 12, fontSize: 12 }}><span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--blue-bg)', marginRight: 4 }} />เพิ่มเพื่อน</span><span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--blue)', marginRight: 4 }} />ส่งผลงาน</span></span></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 8, alignItems: 'end', height: 140 }}>
+          {weeks.map(w => (
+            <div key={w.label} title={`${w.label}: เพิ่มเพื่อน ${w.follows} · ส่งผลงาน ${w.applied}`} style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: '100%', justifyContent: 'center' }}>
+              <div style={{ width: '40%', height: `${w.follows / max * 100}%`, minHeight: 2, background: 'var(--blue-bg)', borderRadius: '4px 4px 0 0' }} />
+              <div style={{ width: '40%', height: `${w.applied / max * 100}%`, minHeight: 2, background: 'var(--blue)', borderRadius: '4px 4px 0 0' }} />
+            </div>))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 8 }}>
+          {weeks.map((w, i) => <span key={w.label} className="mut" style={{ fontSize: 10, textAlign: 'center' }}>{i === 7 ? 'นี้' : `-${7 - i}`}</span>)}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/** Team roster: people who passed, searchable by position, with contact and portfolio. */
+function Team({ users }: { users: U[] | null }) {
+  const [q, setQ] = useState(''); const [role, setRole] = useState('all');
+  if (!users) return <div className="empty">กำลังโหลด…</div>;
+  const s = q.trim().toLowerCase();
+  const team = users.filter(u => ['approved', 'active'].includes(u.status) && (role === 'all' || u.role === role) &&
+    (!s || [u.full_name, u.display_name, u.position, u.phone].some(x => (x || '').toLowerCase().includes(s))));
+  const positions = Array.from(new Set(users.filter(u => ['approved', 'active'].includes(u.status) && u.position).map(u => u.position))).sort();
+  return (
+    <>
+      <div className="row w" style={{ gap: 8 }}>
+        <div className="seg">{[['all', 'ทั้งหมด'], ['editor', 'นักตัดต่อ'], ['crew', 'ทีมโปรดักชัน']].map(([k, l]) => <button key={k} className={role === k ? 'on' : ''} onClick={() => setRole(k)}>{l}</button>)}</div>
+        <input className="in-t" style={{ maxWidth: 280 }} placeholder="ค้นหาชื่อ ตำแหน่ง เบอร์" value={q} onChange={e => setQ(e.target.value)} list="team-pos" />
+        <datalist id="team-pos">{positions.map(p => <option key={p} value={p} />)}</datalist>
+      </div>
+      {team.length === 0 ? <div className="empty">ยังไม่มีทีมงานที่ผ่านการคัดเลือก{s ? 'ตามคำค้นนี้' : ''}</div> : (
+        <section className="card" style={{ padding: 0 }}><div className="tblw"><table className="tbl">
+          <thead><tr><th>ชื่อ</th><th>ตำแหน่ง</th><th>สถานะ</th><th>เบอร์โทร</th><th>ผลงาน</th></tr></thead>
+          <tbody>{team.map(u => (
+            <tr key={u.line_user_id}>
+              <td><Link href={`/admin/line/${u.line_user_id}`} style={{ fontWeight: 600, color: 'var(--blue)' }}>{u.full_name || u.display_name}</Link>
+                <div className="mut" style={{ fontSize: 12 }}>{u.role ? ROLE_TH[u.role] : ''}</div></td>
+              <td>{u.position || <span className="mut">–</span>}</td>
+              <td><span className={STATUS_CHIP[u.status]}>{STATUS_TH[u.status]}</span></td>
+              <td>{u.phone ? <a href={`tel:${u.phone}`}>{u.phone}</a> : <span className="mut">–</span>}</td>
+              <td>{u.portfolio_url ? <a href={u.portfolio_url} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>เปิด ▶</a> : <span className="mut">–</span>}</td>
+            </tr>))}</tbody>
+        </table></div></section>
+      )}
     </>
   );
 }
