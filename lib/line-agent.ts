@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { myProjects, type MyProject } from './line-projects';
-import { clickupConfigured, editingTasks, stage } from './clickup';
+import { clickupConfigured, currentTasks, editingTasks } from './clickup';
 import { clickupIdFor } from './editing';
 
 // The LINE AI assistant: Claude with a few tools that read and write HOOSE data for ONE LINE user.
@@ -282,7 +282,7 @@ async function editingContext(db: SupabaseClient, lineUserId: string): Promise<s
   try {
     const cid = await clickupIdFor(db, lineUserId);
     if (!cid) return '';
-    const open = (await editingTasks()).filter(t => t.assignees.some(a => a.id === cid) && stage(t) !== 'done')
+    const open = currentTasks(await editingTasks()).current.filter(t => t.assignees.some(a => a.id === cid))
       .sort((a, b) => (a.due_date || 9e15) - (b.due_date || 9e15)).slice(0, 12);
     if (!open.length) return 'ไม่มีงานค้าง';
     return open.map(t => `• ${t.name}${t.parent_name ? ' (' + t.parent_name + ')' : ''} · สถานะ ${t.status} · ส่ง ${t.due_date ? new Date(t.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : 'ไม่กำหนด'}`).join('\n');

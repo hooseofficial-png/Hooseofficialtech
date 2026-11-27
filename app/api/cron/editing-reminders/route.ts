@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
-import { clickupConfigured, editingTasks, stage } from '@/lib/clickup';
+import { clickupConfigured, currentTasks, editingTasks, stage } from '@/lib/clickup';
 import { push } from '@/lib/line';
 import { reminderCard } from '@/lib/line-cards';
 
@@ -25,6 +25,7 @@ export async function GET(req: Request) {
   ]);
   const done = new Set((sent || []).map(r => `${r.line_user_id}|${r.clickup_task_id}|${r.kind}`));
   const now = Date.now(); const day = 864e5;
+  const current = new Set(currentTasks(tasks, now).current.map(t => t.id));
   let pushed = 0; const errors: string[] = [];
   for (const e of editors || []) {
     const cu = Number(e.clickup_user_id);
@@ -33,6 +34,7 @@ export async function GET(req: Request) {
       const st = stage(t);
       let kind: Kind | null = null;
       if (st === 'done') { if (t.date_done && now - t.date_done < 2 * day) kind = 'done'; }
+      else if (!current.has(t.id)) continue; // old open work: no reminders
       else if (t.due_date && t.due_date < now) kind = 'overdue';
       else if (t.due_date && t.due_date - now < 3 * day && st !== 'review') kind = 'due_soon';
       else if (st === 'todo' && now - t.date_created > day) kind = 'not_started';

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/admin';
-import { clickupConfigured, editingTasks, members, stage } from '@/lib/clickup';
+import { clickupConfigured, currentTasks, editingTasks, members, stage } from '@/lib/clickup';
 import { statsFor } from '@/lib/editing';
 
 // Admin · Editing: ClickUp tasks of the editing list(s), job calls sent on LINE, and per-editor workload.
@@ -20,7 +20,7 @@ export async function GET() {
   ]); } catch (e) { return NextResponse.json({ error: 'ดึงข้อมูล ClickUp ไม่สำเร็จ: ' + (e as Error).message.slice(0, 200) }, { status: 502 }); }
   const [tasks, team, { data: calls }, { data: editors }] = loaded;
   const now = Date.now();
-  const open = tasks.filter(t => stage(t) !== 'done');
+  const { current: open, hidden } = currentTasks(tasks, now);
   const callByTask = new Map<string, NonNullable<typeof calls>[number]>();
   for (const c of calls || []) if (!callByTask.has(c.clickup_task_id)) callByTask.set(c.clickup_task_id, c);
   const lineByCu = new Map((editors || []).filter(e => e.clickup_user_id).map(e => [Number(e.clickup_user_id), e]));
@@ -29,7 +29,7 @@ export async function GET() {
     .sort((a, b) => b.stats.active - a.stats.active);
   const slim = (t: typeof tasks[number]) => ({ ...t, stage: stage(t), call: callByTask.get(t.id) || null });
   return NextResponse.json({
-    configured: true,
+    configured: true, hiddenOld: hidden,
     unassigned: open.filter(t => !t.assignees.length).map(slim).sort((a, b) => (a.due_date || 9e15) - (b.due_date || 9e15)),
     inProgress: open.filter(t => t.assignees.length).map(slim).sort((a, b) => (a.due_date || 9e15) - (b.due_date || 9e15)),
     doneRecent: tasks.filter(t => stage(t) === 'done' && t.date_done && now - t.date_done < 14 * 864e5).map(slim).sort((a, b) => (b.date_done || 0) - (a.date_done || 0)),

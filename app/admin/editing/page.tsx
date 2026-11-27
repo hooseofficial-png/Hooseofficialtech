@@ -9,7 +9,7 @@ type Call = { id: string; status: string; sent_to: number; assigned_line_user_id
 type T = { id: string; name: string; parent_name: string; url: string; status: string; stage: string; assignees: U[]; due_date: number | null; date_done: number | null; call: Call | null };
 type P = { id: number; username: string; email: string; profilePicture: string | null; line: { line_user_id: string } | null;
   stats: { active: number; todo: number; review: number; overdue: number; dueSoon: number; done30: number; onTime: number | null } };
-type D = { configured: boolean; unassigned: T[]; inProgress: T[]; doneRecent: T[]; people: P[]; editorsOnLine: number; unlinkedEditors: { line_user_id: string; name: string }[] };
+type D = { configured: boolean; hiddenOld: number; unassigned: T[]; inProgress: T[]; doneRecent: T[]; people: P[]; editorsOnLine: number; unlinkedEditors: { line_user_id: string; name: string }[] };
 
 const STAGE: Record<string, string> = { todo: 'ยังไม่เริ่ม', doing: 'กำลังตัด', review: 'รอตรวจ / แก้', done: 'เสร็จ' };
 const dueText = (ms: number | null) => {
@@ -63,6 +63,7 @@ export default function Editing() {
           <Tile label="เลยกำหนด" value={d.inProgress.filter(t => t.due_date && t.due_date < Date.now()).length} hot={d.inProgress.some(t => t.due_date && t.due_date < Date.now())} onClick={() => setTab('doing')} />
           <Tile label="เสร็จ 14 วัน" value={d.doneRecent.length} onClick={() => setTab('done')} />
         </Grid>
+        {d.hiddenOld > 0 && <span className="mut" style={{ fontSize: 12 }}>แสดงเฉพาะงานปัจจุบัน · ซ่อนงานเก่าที่ยังไม่ปิด {d.hiddenOld} รายการ (ไม่ขยับเกิน 60 วัน หรืออยู่ใต้โปรเจกต์ที่เสร็จแล้ว) ข้อมูลใน ClickUp ไม่ถูกแตะ</span>}
         {d.unlinkedEditors.length > 0 && <div className="notice"><span>นักตัดต่อ {d.unlinkedEditors.length} คนยังไม่ผูกบัญชี ClickUp (assign อัตโนมัติไม่ได้): {d.unlinkedEditors.map(x => x.name).join(', ')}</span></div>}
         <div className="seg" style={{ alignSelf: 'flex-start' }}>
           {([['new', `งานใหม่ (${d.unassigned.length})`], ['doing', `กำลังทำ (${d.inProgress.length})`], ['team', 'ทีมตัดต่อ'], ['done', 'เสร็จล่าสุด']] as const).map(([k, l]) =>

@@ -69,3 +69,24 @@ export function stage(t: Pick<CuTask, 'status' | 'status_type'>): 'todo' | 'doin
   if (/progress|doing|edit/.test(s)) return 'doing';
   return 'todo';
 }
+
+const STALE_DAYS = 60;
+
+/**
+ * Current work only: not finished, its parent project not finished, and touched in the last 60 days
+ * (or due soon / recently). Older open tasks (tests, templates, abandoned sets) stay in ClickUp but out of the dashboard.
+ */
+export function currentTasks(tasks: CuTask[], now = Date.now()) {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const isCurrent = (t: CuTask) => {
+    if (stage(t) === 'done') return false;
+    const parent = t.parent ? byId.get(t.parent) : null;
+    if (parent && stage(parent) === 'done') return false;
+    const fresh = now - t.date_updated < STALE_DAYS * 864e5;
+    const dueNear = !!t.due_date && t.due_date > now - 14 * 864e5;
+    return fresh || dueNear;
+  };
+  const current = tasks.filter(isCurrent);
+  const hidden = tasks.filter(t => stage(t) !== 'done' && !isCurrent(t)).length;
+  return { current, hidden };
+}

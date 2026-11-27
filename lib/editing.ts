@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { members, stage, type CuTask } from './clickup';
+import { currentTasks, members, stage, type CuTask } from './clickup';
 
 /** ClickUp member id for a LINE editor: saved id, else match by email (application or app account). Saves a match. */
 export async function clickupIdFor(db: SupabaseClient, lineUserId: string): Promise<number | null> {
@@ -24,7 +24,7 @@ export type EditorStats = { active: number; todo: number; review: number; overdu
 /** Workload and performance numbers for one ClickUp member. */
 export function statsFor(tasks: CuTask[], userId: number, now = Date.now()): EditorStats {
   const mine = tasks.filter(t => t.assignees.some(a => a.id === userId));
-  const open = mine.filter(t => stage(t) !== 'done');
+  const open = currentTasks(tasks, now).current.filter(t => t.assignees.some(a => a.id === userId));
   const done30 = mine.filter(t => stage(t) === 'done' && t.date_done && now - t.date_done < 30 * 864e5);
   const withDue = done30.filter(t => t.due_date);
   return {

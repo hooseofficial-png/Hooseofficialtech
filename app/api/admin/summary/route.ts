@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/admin';
-import { clickupConfigured, editingTasks, stage } from '@/lib/clickup';
+import { clickupConfigured, currentTasks, editingTasks, stage } from '@/lib/clickup';
 
 // Admin · numbers for the overview and analytics pages: editing (ClickUp), production and recruiting (Supabase).
 export const dynamic = 'force-dynamic';
@@ -58,7 +58,7 @@ export async function GET() {
   if (clickupConfigured()) {
     try {
       const tasks = await editingTasks();
-      const open = tasks.filter(t => stage(t) !== 'done');
+      const open = currentTasks(tasks, now).current;
       for (const t of tasks) { bump(t.date_created, 'created'); if (stage(t) === 'done') bump(t.date_done, 'done'); }
       const per = new Map<string, number>();
       for (const t of tasks) if (stage(t) === 'done' && t.date_done && now - t.date_done < 30 * DAY) for (const a of t.assignees) per.set(a.username, (per.get(a.username) || 0) + 1);

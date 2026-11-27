@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { verifyIdToken } from '@/lib/line';
-import { clickupConfigured, editingTasks, stage } from '@/lib/clickup';
+import { clickupConfigured, currentTasks, editingTasks, stage } from '@/lib/clickup';
 import { clickupIdFor, statsFor } from '@/lib/editing';
 
 // LIFF "งานของฉัน" for editors: their ClickUp tasks and performance, proven by the LINE ID token.
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const pick = (t: typeof mine[number]) => ({ id: t.id, name: t.name, parent_name: t.parent_name, url: t.url, status: t.status, stage: stage(t), due_date: t.due_date, date_done: t.date_done });
   return NextResponse.json({
     linked: true, user: u, stats: statsFor(tasks, cid, now),
-    open: mine.filter(t => stage(t) !== 'done').sort((a, b) => (a.due_date || 9e15) - (b.due_date || 9e15)).map(pick),
+    open: currentTasks(tasks, now).current.filter(t => t.assignees.some(a => a.id === cid)).sort((a, b) => (a.due_date || 9e15) - (b.due_date || 9e15)).map(pick),
     done: mine.filter(t => stage(t) === 'done').sort((a, b) => (b.date_done || 0) - (a.date_done || 0)).slice(0, 10).map(pick)
   });
 }
