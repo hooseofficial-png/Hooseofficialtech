@@ -81,7 +81,7 @@ export default function CrewPage() {
   }
   async function queueAnnouncement() {
     setOc(false);
-    act(() => sb().from('announcements').insert({ project_id: id, position_ids: open.map(c => c.id), message: ocMessage(data!) }), 'เข้าคิวประกาศแล้ว · จะส่งผ่าน HOOSE Official LINE OA เมื่อเชื่อมระบบ');
+    act(() => sb().from('announcements').insert({ project_id: id, position_ids: open.map(c => c.id), message: ocMessage(data!) }), 'เข้าคิวประกาศแล้ว · ทีม HOOSE จะส่งถึงทีมงานผ่าน LINE OA');
   }
   return (
     <div className="grid">

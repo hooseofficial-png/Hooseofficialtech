@@ -74,3 +74,32 @@ export async function getProfile(userId: string): Promise<{ displayName: string;
 export function text(t: string): LineMessage {
   return { type: 'text', text: (t || '…').slice(0, 4900) };
 }
+
+/** Signed, non-guessable token for "link this LINE user to an app account" links. Uses the channel secret as key. */
+export function signLink(lineUserId: string) {
+  const mac = createHmac('sha256', process.env.LINE_CHANNEL_SECRET || '').update('link:' + lineUserId).digest('base64url').slice(0, 32);
+  return Buffer.from(lineUserId).toString('base64url') + '.' + mac;
+}
+export function verifyLink(token: string): string | null {
+  const [a, mac] = (token || '').split('.');
+  if (!a || !mac) return null;
+  let id = '';
+  try { id = Buffer.from(a, 'base64url').toString(); } catch { return null; }
+  const want = createHmac('sha256', process.env.LINE_CHANNEL_SECRET || '').update('link:' + id).digest('base64url').slice(0, 32);
+  return want.length === mac.length && timingSafeEqual(Buffer.from(want), Buffer.from(mac)) && /^U[0-9a-f]{32}$/.test(id) ? id : null;
+}
+
+/** Splits a long chat reply into at most 2 bubbles, preferably after a sentence end, so nothing reads like a wall of text. */
+export function splitReply(t: string, max = 160): string[] {
+  const s = (t || '').trim();
+  if (s.length <= max) return [s];
+  const mid = s.length / 2;
+  const pick = (re: RegExp) => {
+    const cuts = Array.from(s.matchAll(re)).map(m => m.index! + m[0].length).filter(i => i > 25 && i < s.length - 25);
+    return cuts.length ? cuts.reduce((b, i) => Math.abs(i - mid) < Math.abs(b - mid) ? i : b) : -1;
+  };
+  let at = pick(/\n+/g);
+  if (at < 0) at = pick(/(?<=[.!?…]|ค่ะ|ครับ|นะคะ|\p{Extended_Pictographic})\s+/gu);
+  if (at < 0) at = pick(/\s+/g);
+  return at < 0 ? [s] : [s.slice(0, at).trim(), s.slice(at).trim()];
+}

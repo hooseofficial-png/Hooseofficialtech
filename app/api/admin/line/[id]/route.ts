@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { requireAdmin, STATUSES } from '@/lib/admin';
-import { push, text } from '@/lib/line';
+import { push, signLink, text } from '@/lib/line';
 import { resultCard, withQuickMenu } from '@/lib/line-cards';
 
 // Admin · one applicant: profile + chat history (GET), change status / note and optionally message them on LINE (PATCH).
@@ -45,7 +45,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (msg) {
     try {
       const { data: u } = await db.from('line_users').select('role, status, survey_done_at, interview_url').eq('line_user_id', params.id).single();
-      const cardMsg = b.status ? resultCard(b.status, u?.role ?? null, msg, u?.interview_url || '') : null;
+      const cardMsg = b.status ? resultCard(b.status, u?.role ?? null, msg, u?.interview_url || '', signLink(params.id)) : null;
       await push(params.id, [withQuickMenu(cardMsg || text(msg), { role: u?.role ?? null, status: u?.status || '', survey_done_at: u?.survey_done_at })]); sent = true;
       await db.from('line_messages').insert({ line_user_id: params.id, role: 'assistant', content: `[แอดมิน] ${msg}` });
     } catch (e) { sendError = (e as Error).message; }
