@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import TopBar from '@/components/TopBar';
+import AdminShell from '@/components/admin/AdminShell';
 import { NOTIFY, ROLE_TH, STATUS_TH, STATUS_CHIP, fmt } from '@/lib/admin-ui';
 import { toast } from '@/lib/ui';
 
@@ -11,7 +11,7 @@ const FUNNEL = ['new', 'applying', 'applied', 'interview', 'approved', 'active']
 export default function LineAdmin() {
   const [users, setUsers] = useState<U[] | null>(null);
   const [denied, setDenied] = useState(false);
-  const [mode, setMode] = useState<'overview' | 'review' | 'team' | 'all'>('overview');
+  const [mode, setMode] = useState<'overview' | 'review' | 'team' | 'all'>('review');
   const [role, setRole] = useState('all'); const [status, setStatus] = useState('all'); const [q, setQ] = useState('');
   const load = () => fetch('/api/admin/line').then(async r => {
     if (r.status === 403 || r.status === 401) { setDenied(true); return; }
@@ -26,13 +26,11 @@ export default function LineAdmin() {
   }, [byRole, status, q]);
   const count = (st: string) => byRole.filter(u => u.status === st).length;
 
-  if (denied) return <><TopBar label="Admin" /><main className="wrap"><div className="empty">หน้านี้สำหรับแอดมิน HOOSE เท่านั้น</div></main></>;
   return (
-    <><TopBar label="Admin · LINE OA" /><main className="wrap">
-      <div className="between"><h1>แดชบอร์ด LINE OA</h1><span className="mut" style={{ fontSize: 13 }}>{users ? `${users.length} คน` : ''}</span></div>
+    <AdminShell title="รับสมัคร · LINE OA" denied={denied} sub={<span className="mut" style={{ fontSize: 13 }}>{users ? `${users.length} คนใน LINE OA` : ''}</span>}>
       <div className="seg" role="tablist" style={{ alignSelf: 'flex-start' }}>
-        <button className={mode === 'overview' ? 'on' : ''} onClick={() => setMode('overview')}>ภาพรวม</button>
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>ตรวจผลงาน ({(users || []).filter(u => u.status === 'applied').length})</button>
+        <button className={mode === 'overview' ? 'on' : ''} onClick={() => setMode('overview')}>สรุปรับสมัคร</button>
         <button className={mode === 'team' ? 'on' : ''} onClick={() => setMode('team')}>ทีมงาน</button>
         <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>ทั้งหมด</button>
       </div>
@@ -80,7 +78,7 @@ export default function LineAdmin() {
         )}
       </section>
       </>}
-    </main></>
+    </AdminShell>
   );
 }
 
@@ -225,3 +223,4 @@ function Team({ users }: { users: U[] | null }) {
     </>
   );
 }
+

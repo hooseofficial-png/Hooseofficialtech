@@ -1,12 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import TopBar from '@/components/TopBar';
+import AdminShell from '@/components/admin/AdminShell';
 import { toast } from '@/lib/ui';
 import { NOTIFY, ROLE_TH, STATUS_CHIP, STATUS_TH, SURVEY_Q, fmt } from '@/lib/admin-ui';
 import { SURVEY_LABEL } from '@/lib/line-cards';
 
-type U = Record<string, string | boolean | null | object> & { line_user_id: string; status: string; note: string; memory: string; needs_attention: boolean; attention_note: string };
+type U = Record<string, string | number | boolean | null | object> & { line_user_id: string; status: string; note: string; memory: string; needs_attention: boolean; attention_note: string };
 type M = { id: number; role: 'user' | 'assistant'; content: string; created_at: string };
 const ACTIONS = ['interview', 'approved', 'rejected', 'active'];
 
@@ -16,6 +16,7 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
   const [note, setNote] = useState(''); const [memory, setMemory] = useState('');
   const [pick, setPick] = useState<string | null>(null); const [notify, setNotify] = useState(''); const [send, setSend] = useState(true);
   const [iv, setIv] = useState(''); const [msg, setMsg] = useState('');
+  const [cuMembers, setCuMembers] = useState<{ id: number; username: string; email: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function load() {
@@ -39,9 +40,9 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
     setPick(null); load();
   }
 
-  if (denied) return <><TopBar label="Admin" /><main className="wrap"><div className="empty">หน้านี้สำหรับแอดมิน HOOSE เท่านั้น</div></main></>;
-  if (missing) return <><TopBar label="Admin" /><main className="wrap"><div className="empty">ไม่พบผู้ใช้นี้ · <Link href="/admin/line">กลับ</Link></div></main></>;
-  if (!u) return <><TopBar label="Admin" /><main className="wrap"><div className="empty">กำลังโหลด…</div></main></>;
+  if (denied) return <AdminShell title="รายละเอียด" denied>{null}</AdminShell>;
+  if (missing) return <AdminShell title="รายละเอียด"><div className="empty">ไม่พบผู้ใช้นี้ · <Link href="/admin/line">กลับ</Link></div></AdminShell>;
+  if (!u) return <AdminShell title="รายละเอียด"><div className="empty">กำลังโหลด…</div></AdminShell>;
 
   const field = (label: string, v: unknown, href?: string) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
@@ -50,8 +51,7 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
     </div>);
 
   return (
-    <><TopBar label="Admin · LINE OA" /><main className="wrap" style={{ maxWidth: 880 }}>
-      <Link href="/admin/line" className="mut" style={{ fontSize: 13 }}>← ผู้สมัครทั้งหมด</Link>
+    <AdminShell title={name || 'รายละเอียด'} sub={<Link href="/admin/line" className="mut" style={{ fontSize: 13 }}>← รับสมัคร</Link>}>
       <section className="card id-card">
         {u.picture_url ? <img src={String(u.picture_url)} alt="" className="av lg" style={{ objectFit: 'cover' }} /> : <span className="av lg">{(name || '?')[0]}</span>}
         <div className="grow" style={{ minWidth: 0 }}>
@@ -107,6 +107,19 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
         )}
       </section>
 
+      {u.role === 'editor' && (
+        <section className="card">
+          <h2>บัญชี ClickUp ✂️</h2>
+          <span className="mut" style={{ fontSize: 12 }}>ใช้ assign งานอัตโนมัติเมื่อกดรับงานใน LINE และส่งแจ้งเตือนกำหนดส่ง · ระบบจับคู่จากอีเมลให้เองถ้าตรงกัน</span>
+          {cuMembers === null
+            ? <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => fetch('/api/admin/clickup-members').then(r => r.json()).then(j => setCuMembers(j.members || []))}>{u.clickup_user_id ? 'เปลี่ยนบัญชี ClickUp' : 'เลือกบัญชี ClickUp'}</button>
+            : <select className="in-t" style={{ maxWidth: 360 }} value={String(u.clickup_user_id || '')} onChange={e => save({ clickup_user_id: e.target.value ? Number(e.target.value) : null }, 'ผูกบัญชี ClickUp แล้ว')}>
+                <option value="">— ยังไม่ผูก —</option>
+                {cuMembers.map(m => <option key={m.id} value={m.id}>{m.username} · {m.email}</option>)}
+              </select>}
+          {u.clickup_user_id ? <span style={{ fontSize: 13 }}>ผูกแล้ว (ID {String(u.clickup_user_id)})</span> : <span className="mut" style={{ fontSize: 13 }}>ยังไม่ผูก · ถ้าไม่มีในรายการ ให้เชิญเป็น Guest ใน ClickUp ก่อน</span>}
+        </section>)}
+
       <section className="card">
         <h2>ตอบแชท 💬</h2>
         <span className="mut" style={{ fontSize: 12 }}>ส่งข้อความจากทีม HOOSE ถึงคนนี้ทาง LINE (นับโควตา push 1 ข้อความ) · ขึ้นในประวัติแชทด้านล่าง</span>
@@ -143,6 +156,6 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
           </div>
         )}
       </section>
-    </main></>
+    </AdminShell>
   );
 }

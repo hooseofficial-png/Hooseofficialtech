@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
-import { getProfile, lineConfigured, reply, startLoading, text, verifySignature } from '@/lib/line';
-import { DONE_TEXT, nextStepCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
+import { getProfile, lineConfigured, reply, splitReply, startLoading, text, verifySignature, type LineMessage } from '@/lib/line';
+import { DONE_TEXTS, editingAssignedCard, nextStepCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
+import { addAssignee, clickupConfigured } from '@/lib/clickup';
+import { clickupIdFor } from '@/lib/editing';
 import { answer, SORRY, type LineUser } from '@/lib/line-agent';
 
 // HOOSE Official LINE OA webhook.
 // LINE Developers → Messaging API → Webhook URL: https://app.hooseofficial.site/api/line/webhook
 //  follow          → save the person, send the welcome card (3 role buttons)
 //  postback role   → save the role, send the next recruiting step
-//  text message    → "เมนู" shows the welcome card, "สมัคร" the application form card; anything else shows
-//                    the typing dots and goes to the AI assistant
+//  postback oc     → Open Call answer (accept / decline) saved to open_call_responses
+//  text message    → "เมนู" welcome card · "สมัคร" next application step · applicants still applying are
+//                    walked through name → position → best work without AI · everything else goes to the AI
+//                    (typing dots; long answers split into 2 bubbles)
 // Always answers 200 so LINE does not retry; failures are logged.
 
 export const runtime = 'nodejs';
@@ -24,7 +28,7 @@ type LineEvent = {
 };
 
 const MENU = /^(เมนู|menu|เริ่มใหม่|start)$/i;
-const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory, survey, survey_done_at';
+const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory, survey, survey_done_at, profile_id';
 const APPLY = /^(สมัคร|ใบสมัคร|apply|liff|ฟอร์ม|ฟอร์มสมัคร)$/i;
 const STATUS = /^(สถานะ|สถานะของฉัน|สถานะงาน|status|เช็กสถานะ|เช็คสถานะ)$/i;
 const URL_RE = /https?:\/\/[^\s]+/i;
@@ -77,24 +81,27 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       const status = ['new', 'applying'].includes(u.status) ? 'applying' : u.status;
       await db.from('line_users').update({ role, status }).eq('line_user_id', userId);
       const nu = { ...u, role, status };
-      await reply(ev.replyToken, [role === 'crew' ? text(crewPrompt(nu)) : nextStepCard(role)]);
+      const first = role === 'crew' && ['new', 'applying'].includes(status) ? text(crewPrompt(nu)) : nextStepCard(role);
+      await reply(ev.replyToken, [first]);
     }
+    if (q.get('action') === 'oc') await openCallAnswer(db, u, q, ev.replyToken);
+    if (q.get('action') === 'ed') await claimEditing(db, u, q.get('c') || '', ev.replyToken);
     return;
   }
 
   if (ev.type === 'message') {
-    if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('ตอนนี้น้องฮูสอ่านได้เฉพาะข้อความนะคะ 😊 ส่งผลงานเป็นลิงก์ (Google Drive, YouTube หรือ Portfolio) มาได้เลยค่ะ')]); return; }
+    if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('น้องฮูสอ่านได้เฉพาะข้อความนะคะ 😊 ถ้าจะส่งผลงาน ส่งเป็นลิงก์ (Google Drive, YouTube, Vimeo หรือ Portfolio) มาได้เลยค่ะ')]); return; }
     const msg = (ev.message.text || '').trim();
-    const quick = (m: ReturnType<typeof text>) => withQuickMenu(m, u);
+    const quick = (m: LineMessage) => withQuickMenu(m, u);
     if (MENU.test(msg)) { await reply(ev.replyToken, [welcomeCard(u.display_name)]); return; }
-    if (APPLY.test(msg)) { await reply(ev.replyToken, [u.role === 'crew' ? text(crewPrompt(u)) : u.role ? nextStepCard(u.role) : welcomeCard(u.display_name)]); return; }
+    if (APPLY.test(msg)) { await reply(ev.replyToken, [u.role === 'crew' && ['new', 'applying'].includes(u.status) ? text(crewPrompt(u)) : u.role ? nextStepCard(u.role) : welcomeCard(u.display_name)]); return; }
     if (STATUS.test(msg) && ['approved', 'active'].includes(u.status)) { await reply(ev.replyToken, [quick(statusCard(u))]); return; }
 
-    // Application intake: plain steps, no AI needed.
+    // Application intake: fixed steps, no AI needed.
     const out = await intake(db, u, msg);
     if (out) {
-      await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg.slice(0, 4000) }, { line_user_id: userId, role: 'assistant', content: out }]);
-      await reply(ev.replyToken, [text(out)]);
+      await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg.slice(0, 4000) }, { line_user_id: userId, role: 'assistant', content: out.join('\n') }]);
+      await reply(ev.replyToken, out.map(t => text(t)));
       return;
     }
 
@@ -107,7 +114,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       console.error('line agent failed', why);
       await db.from('line_users').update({ needs_attention: true, attention_note: 'ผู้ช่วยตอบไม่ได้: ' + why.slice(0, 300), attention_at: new Date().toISOString() }).eq('line_user_id', userId);
     }
-    const msgs = [text(ans.text)];
+    const msgs: LineMessage[] = splitReply(ans.text).map(t => text(t));
     if (ans.card === 'form' && u.role === 'editor') msgs.push(nextStepCard('editor'));
     if (ans.card === 'status' && ['approved', 'active'].includes(u.status)) msgs.push(statusCard(u));
     msgs[msgs.length - 1] = quick(msgs[msgs.length - 1]);
@@ -115,26 +122,29 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
   }
 }
 
-/** What to ask a crew applicant next. */
+const BEST_WORK_CREW = 'ขอดูผลงานในกองถ่ายที่คุณชอบที่สุด 1 ชิ้นค่ะ 🎬 ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ถ้าเล่าสั้น ๆ ด้วยว่าทำหน้าที่อะไรในงานนั้น จะยิ่งดีเลยค่ะ';
+const BEST_WORK_EDITOR = 'ขอดูผลงานที่คุณคิดว่าตัดออกมาดีที่สุด 1 ชิ้นค่ะ ✨ ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio)';
+
+/** What to ask a crew applicant next (never asks again for something already given). */
 function crewPrompt(u: LineUser) {
   if (!u.full_name) return 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊';
-  if (!u.position) return `ยินดีที่ได้รู้จักค่ะคุณ${u.full_name} 😊 ตำแหน่งงานของคุณคืออะไรคะ? (เช่น DOP, Gaffer, Art, PA)`;
-  if (!u.portfolio_url) return 'ส่งลิงก์ผลงานมาได้เลยค่ะ 🎬 (Google Drive, YouTube หรือ Portfolio)';
-  return DONE_TEXT;
+  if (!u.position) return `ยินดีที่ได้รู้จักค่ะคุณ${u.full_name} 😊 ปกติคุณทำตำแหน่งอะไรในกองถ่ายคะ? (เช่น Camera Assistant, Gaffer, Art, PA)`;
+  if (!u.portfolio_url) return BEST_WORK_CREW;
+  return DONE_TEXTS.join('\n');
 }
 
 /**
- * Applicants still applying: editors finish by sending a portfolio link; crew answer name → position → link.
- * Returns the reply, or null to let the AI answer (questions and small talk).
+ * Applicants still applying: editors finish by sending their best work; crew answer name → position → best work.
+ * Returns the reply bubbles, or null to let the AI answer (questions and small talk).
  */
-async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string): Promise<string | null> {
+async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string): Promise<string[] | null> {
   if (!['editor', 'crew'].includes(u.role || '') || !['new', 'applying'].includes(u.status)) return null;
   const url = msg.match(URL_RE)?.[0].replace(/[)\]>"']+$/, '') || '';
   const patch: Record<string, string> = {};
   if (url) patch.portfolio_url = url.slice(0, 500);
   else if (QUESTION.test(msg)) return null;
-  else if (u.role === 'crew' && !u.full_name && msg.length <= 60) patch.full_name = msg;
-  else if (u.role === 'crew' && u.full_name && !u.position && msg.length <= 80) patch.position = msg;
+  else if (u.role === 'crew' && !u.full_name && msg.length <= 60) patch.full_name = msg.replace(/^(ชื่อ|ผม|ฉัน|ดิฉัน|หนู)\s*/, '').trim();
+  else if (u.role === 'crew' && u.full_name && !u.position && msg.length <= 120) patch.position = msg.replace(/^(ได้หมด(เลย)?(ครับ|ค่ะ)?\s*)?(ส่วนใหญ่|ปกติ|หลัก ๆ)?\s*(ทำ|เป็น)?\s*/, '').trim() || msg;
   else return null;
 
   const next = { ...u, ...patch } as LineUser;
@@ -142,6 +152,42 @@ async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string):
   const now = new Date().toISOString();
   await db.from('line_users').update({ ...patch, ...(complete ? { status: 'applied', applied_at: now, status_changed_at: now } : { status: 'applying' }) }).eq('line_user_id', u.line_user_id);
   Object.assign(u, patch);
-  if (complete) return DONE_TEXT;
-  return u.role === 'crew' ? crewPrompt(next) : null;
+  if (complete) return DONE_TEXTS;
+  if (u.role === 'crew') return [crewPrompt(next)];
+  return [BEST_WORK_EDITOR];
+}
+
+/** Open Call button: save the answer. The HOOSE team confirms from the dashboard, then the party code is sent. */
+async function openCallAnswer(db: ReturnType<typeof sbAdmin>, u: LineUser, q: URLSearchParams, replyToken: string) {
+  const pos = q.get('pos') || ''; const ann = q.get('ann') || ''; const a = q.get('a') === 'accept' ? 'accept' : 'decline';
+  if (!/^[0-9a-f-]{36}$/.test(pos) || !/^[0-9a-f-]{36}$/.test(ann)) return;
+  const { data: cp } = await db.from('crew_positions').select('status, position').eq('id', pos).maybeSingle();
+  if (!cp) { await reply(replyToken, [text('ประกาศนี้ปิดไปแล้วค่ะ 🙏 มีงานใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ทันทีนะคะ')]); return; }
+  if (a === 'accept' && cp.status !== 'open') { await reply(replyToken, [text(`ตำแหน่ง ${cp.position} ได้คนครบแล้วค่ะ 🙏 ขอบคุณที่สนใจมาก ๆ นะคะ งานหน้าจะรีบส่งมาให้เลยค่ะ`)]); return; }
+  await db.from('open_call_responses').upsert({ announcement_id: ann, position_id: pos, line_user_id: u.line_user_id, answer: a }, { onConflict: 'position_id,line_user_id' });
+  await reply(replyToken, [text(a === 'accept'
+    ? `รับทราบค่ะ ✋ ส่งชื่อคุณให้ทีมงานพิจารณาตำแหน่ง ${cp.position} แล้วนะคะ ถ้าได้รับเลือก น้องฮูสจะส่ง Party Code และรายละเอียดกองถ่ายให้ทันทีค่ะ 💙`
+    : 'ไม่เป็นไรเลยค่ะ 😊 ขอบคุณที่แจ้งนะคะ งานหน้าจะส่งมาให้อีกค่ะ')]);
+}
+
+/** Editing job: the first approved editor to tap gets it; assigned in ClickUp right away when we know their ClickUp account. */
+async function claimEditing(db: ReturnType<typeof sbAdmin>, u: LineUser, callId: string, replyToken: string) {
+  if (!/^[0-9a-f-]{36}$/.test(callId)) return;
+  if (!['approved', 'active'].includes(u.status)) { await reply(replyToken, [text('งานนี้สำหรับทีมตัดต่อ HOOSE ที่ผ่านการคัดเลือกแล้วนะคะ 🙏')]); return; }
+  const now = new Date().toISOString();
+  const { data: won } = await db.from('editing_calls').update({ status: 'assigned', assigned_line_user_id: u.line_user_id, assigned_at: now })
+    .eq('id', callId).eq('status', 'open').select('id, clickup_task_id, task_name, parent_name, due_date, detail, rate').maybeSingle();
+  if (!won) { await reply(replyToken, [text('งานนี้มีคนรับไปแล้วค่ะ 🙏 ขอบคุณที่ไวมากนะคะ งานหน้าน้องฮูสจะรีบส่งมาให้เลยค่ะ ✨')]); return; }
+  let inClickUp = false;
+  if (clickupConfigured()) {
+    try {
+      const cid = await clickupIdFor(db, u.line_user_id);
+      if (cid) { await addAssignee(won.clickup_task_id, cid); inClickUp = true; }
+    } catch (e) { console.error('clickup assign', (e as Error).message); }
+  }
+  await db.from('editing_calls').update({ clickup_assigned: inClickUp }).eq('id', won.id);
+  if (!inClickUp) await db.from('line_users').update({ needs_attention: true, attention_at: now,
+    attention_note: `รับงานตัด "${won.task_name}" แล้ว แต่ยัง assign ใน ClickUp ไม่ได้ (ยังไม่ได้ผูกบัญชี ClickUp) · เชิญเป็น guest แล้วเลือกบัญชีในหน้ารายคน` }).eq('line_user_id', u.line_user_id);
+  await db.from('line_messages').insert({ line_user_id: u.line_user_id, role: 'assistant', content: `[รับงานตัด] ${won.task_name}` });
+  await reply(replyToken, [editingAssignedCard(won, `https://app.clickup.com/t/${won.clickup_task_id}`, inClickUp)]);
 }

@@ -45,7 +45,7 @@ function card(alt: string, title: string, lines: string[], buttons: Btn[], tag =
 export function liffId() { return process.env.NEXT_PUBLIC_LIFF_ID || process.env.NEXT_LIFF_ID || ''; }
 
 /** Opens a page of the HOOSE LIFF app: apply (form), status (my application), projects. Empty when LIFF is not set up. */
-export function liffUrl(view: 'apply' | 'status' | 'projects', params: Record<string, string> = {}) {
+export function liffUrl(view: 'apply' | 'status' | 'projects' | 'work', params: Record<string, string> = {}) {
   const id = liffId();
   if (!id) return '';
   return `https://liff.line.me/${id}?` + new URLSearchParams({ view, ...params }).toString();
@@ -60,15 +60,20 @@ type QR = { label: string; uri?: string; text?: string };
 export function withQuickMenu(m: LineMessage, u: { role: string | null; status: string; survey_done_at?: string | null }): LineMessage {
   if (!['approved', 'active'].includes(u.status)) return m;
   const items: QR[] = [];
-  const status = liffUrl('status'); const projects = liffUrl('projects');
-  if (status) items.push({ label: '📋 สถานะงานของฉัน', uri: status });
-  if (projects) items.push({ label: '🎬 อัปเดตโปรเจกต์', uri: projects });
+  const status = liffUrl('status'); const projects = liffUrl('projects'); const work = liffUrl('work');
+  if (u.role === 'editor' && work) items.push({ label: '✂️ งานตัดของฉัน', uri: work });
+  else if (status) items.push({ label: '📋 สถานะงานของฉัน', uri: status });
+  if (projects && u.role !== 'editor') items.push({ label: '🎬 อัปเดตโปรเจกต์', uri: projects });
   if (!items.length) return m;
   return { ...m, quickReply: { items: items.map(i => ({ type: 'action', action: { type: 'uri', label: i.label, uri: i.uri } })) } };
 }
 
-/** Sent when an applicant finishes (portfolio received). */
-export const DONE_TEXT = 'เสร็จสิ้นแล้วค่ะ ✅ ทีมงานกำลังรีวิวคำตอบของคุณ รอรับการอัปเดตในแชทนี้ได้เลยนะคะ 💙';
+/** Sent (as 2 bubbles) when an applicant finishes: a compliment, then what happens next. */
+export const DONE_TEXTS = [
+  'เยี่ยมมากเลยค่ะ 👏 ขอบคุณที่เลือกผลงานที่ภูมิใจที่สุดมาให้ดูนะคะ',
+  'เราได้รับคำตอบของคุณเรียบร้อยแล้วค่ะ ✅ ทีมงานกำลังรีวิวตำแหน่งงานในกองถ่ายนี้ หากได้รับการอนุมัติ เราจะแจ้งกลับทันทีพร้อมตำแหน่งงานในอนาคต ขอบคุณนะคะ :))'
+];
+export const DONE_TEXT = DONE_TEXTS.join('\n');
 
 // ---------- funnel cards ----------
 
@@ -85,7 +90,7 @@ export function welcomeCard(name?: string): LineMessage {
 
 export function nextStepCard(role: string): LineMessage {
   if (role === 'editor') return card('สมัครนักตัดต่อ · กรอกใบสมัคร', 'มาเริ่มสมัครนักตัดต่อกันเลย ✨',
-    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② กรอกเสร็จแล้ว ส่งลิงก์ผลงานมาในแชทนี้ได้เลยค่ะ 🎬'],
+    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② จากนั้นเลือกผลงานที่คุณคิดว่าดีที่สุด 1 ชิ้น แล้วส่งลิงก์มาในแชทนี้ได้เลยค่ะ 🎬'],
     [{ label: '📝 กรอกใบสมัคร', uri: EDITOR_APPLY_FORM, primary: true }]);
   if (role === 'crew') return { type: 'text', text: 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊' };
   return card('PM / Producer · เปิดแอป HOOSE', 'สำหรับ PM / Producer 📁',
@@ -149,14 +154,105 @@ export function surveyDoneCard(): LineMessage {
 
 // ---------- results sent from the admin dashboard ----------
 
-export function resultCard(status: string, role: string | null, message: string, interviewUrl = ''): LineMessage | null {
+/** Opens the app sign-up and links the new account to this LINE user (signed token from lib/line). */
+export const accountUrl = (token: string) => `${SITE}/line/link?t=${encodeURIComponent(token)}`;
+
+export function resultCard(status: string, role: string | null, message: string, interviewUrl = '', linkToken = ''): LineMessage | null {
   if (status === 'interview') return card('ผ่านรอบผลงาน · นัดสัมภาษณ์', 'ผ่านรอบผลงานแล้วค่ะ 🎉', [message],
     interviewUrl ? [{ label: '🗓️ นัดเวลาสัมภาษณ์', uri: interviewUrl, primary: true }] : []);
-  if (status === 'approved') return role === 'editor'
-    ? card('ผ่านการคัดเลือก · กรอกข้อมูลเพิ่มเติม', 'ยินดีต้อนรับสู่ทีม HOOSE 🎉', [message], [{ label: '📝 กรอกข้อมูลทีมงาน', uri: EDITOR_ONBOARD_FORM, primary: true }])
-    : card('ผ่านการคัดเลือก · สมัครบัญชี HOOSE', 'ผ่านการคัดเลือกแล้วค่ะ 🎉', [message], [{ label: 'สมัครบัญชีในแอป HOOSE', uri: SITE + '/login?mode=signup', primary: true }]);
+  if (status === 'approved') {
+    const btns: Btn[] = linkToken ? [{ label: '🎬 สร้างบัญชีกองถ่าย HOOSE', uri: accountUrl(linkToken), primary: true }] : [];
+    if (role === 'editor') btns.push({ label: '📝 กรอกข้อมูลทีมงาน', uri: EDITOR_ONBOARD_FORM });
+    return card('ผ่านการคัดเลือก · สร้างบัญชีกองถ่าย', 'ยินดีด้วยค่ะ ผ่านการคัดเลือกแล้ว 🎉', [message, 'ขั้นต่อไป: สร้างบัญชีกองถ่าย HOOSE (ใช้เวลา 1 นาที) เพื่อรับงานและเข้าร่วมกองถ่ายค่ะ'], btns);
+  }
   if (status === 'rejected') return card('ผลการสมัคร', 'ขอบคุณที่สนใจ HOOSE นะคะ 🙏', [message], []);
   if (status === 'active') return card('ลงทะเบียนทีมงานแล้ว', 'เป็นทีมงาน HOOSE แล้ว 💙', [message],
     liffUrl('projects') ? [{ label: '🎬 ดูโปรเจกต์', uri: liffUrl('projects'), primary: true }] : []);
   return null;
+}
+
+/** After the app account is linked. */
+export const ACCOUNT_DONE_TEXTS = [
+  'บัญชีกองถ่าย Hooseofficial ของคุณเสร็จสิ้นแล้วค่ะ 🎉',
+  'ต่อจากนี้ น้องฮูสจะเป็นผู้ช่วยการทำงานของคุณตลอดงาน คอยอัปเดตกองถ่ายและตอบคำถามให้นะคะ มีอะไรสงสัยพิมพ์ถามได้เลยค่ะ 💙'
+];
+
+// ---------- Open Call ----------
+
+export type OcProject = { name: string; brand: string; type: string; start_date: string | null; end_date: string | null; locations: string[] | null; call_time: string | null };
+const thDate = (d: string | null) => d ? new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
+export const dateRangeTh = (p: { start_date: string | null; end_date: string | null }) =>
+  !p.start_date ? 'ยังไม่กำหนดวัน' : thDate(p.start_date) + (p.end_date && p.end_date !== p.start_date ? ' – ' + thDate(p.end_date) : '');
+
+/** One Open Call position, with accept / decline postbacks. */
+export function openCallCard(p: OcProject, pos: { id: string; position: string; scope: string; days: number | null }, announcementId: string): LineMessage {
+  const lines = [
+    [p.type, p.brand].filter(Boolean).join(' · '),
+    '📅 ' + dateRangeTh(p) + (pos.days ? ` (${pos.days} วัน)` : ''),
+    p.locations?.length ? '📍 ' + p.locations.join(', ') : '',
+    pos.scope ? '📝 ' + pos.scope : ''
+  ].filter(Boolean);
+  return card(`Open Call · ${pos.position} · ${p.name}`, `${pos.position} · ${p.name}`, lines, [
+    { label: '✋ สนใจรับงาน', data: `action=oc&a=accept&pos=${pos.id}&ann=${announcementId}`, display: 'สนใจรับงานนี้ค่ะ/ครับ', primary: true },
+    { label: 'ไม่สะดวกรอบนี้', data: `action=oc&a=decline&pos=${pos.id}&ann=${announcementId}`, display: 'รอบนี้ไม่สะดวก' }
+  ], 'HOOSE · OPEN CALL');
+}
+
+/** Sent when the team picks this person for a position: party code + project brief. */
+export function partyCodeCard(p: OcProject & { party_code: string | null }, position: string): LineMessage {
+  const code = p.party_code || '';
+  return card(`ยืนยันงาน · ${p.name} · Party Code ${code}`, `ยืนยันแล้ว! ${position} · ${p.name} 🎬`, [
+    code ? `Party Code: ${code}` : 'ทีมงานจะส่ง Party Code ให้เร็ว ๆ นี้ค่ะ',
+    'กดปุ่มด้านล่าง ใส่ Party Code เพื่อเข้ากองถ่ายในแอป HOOSE แล้วจะเห็นคิว สถานที่ และเอกสารทั้งหมดค่ะ'
+  ], code ? [{ label: 'เข้าร่วมกองถ่าย', uri: `${SITE}/join?code=${encodeURIComponent(code)}`, primary: true }] : [], 'HOOSE · ยืนยันงาน');
+}
+
+/** Short brief that follows the party code card (plain text, split into 2 bubbles if long). */
+export function projectBrief(p: OcProject & { synopsis?: string | null; deliverables?: string | null; pm_name?: string | null; pm_phone?: string | null; special?: string | null }) {
+  return [
+    `📋 สรุปโปรเจกต์ ${p.name}`,
+    [p.type, p.brand].filter(Boolean).join(' · '),
+    '📅 ' + dateRangeTh(p) + (p.call_time ? ' · คอล ' + p.call_time.slice(0, 5) : ''),
+    p.locations?.length ? '📍 ' + p.locations.join(', ') : '',
+    p.synopsis ? '🎬 ' + p.synopsis.slice(0, 200) : '',
+    p.deliverables ? '📦 ' + p.deliverables.slice(0, 120) : '',
+    p.special ? '⚠️ ' + p.special.slice(0, 120) : '',
+    p.pm_name ? `☎️ PM: ${p.pm_name}${p.pm_phone ? ' ' + p.pm_phone : ''}` : ''
+  ].filter(Boolean).join('\n');
+}
+
+// ---------- Editing jobs (ClickUp) ----------
+
+export type EditCall = { id: string; task_name: string; parent_name: string; due_date: string | null; detail: string; rate: string };
+const thDateTime = (d: string | null) => d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ยังไม่กำหนด';
+
+/** Job call for editors: first to tap "รับงานนี้" gets it (assigned in ClickUp automatically). */
+export function editingCallCard(c: EditCall): LineMessage {
+  return card(`งานตัดต่อใหม่ · ${c.task_name}`, `${c.task_name} ✂️`, [
+    c.parent_name ? '📁 ' + c.parent_name : '',
+    '⏰ ส่งงาน: ' + thDateTime(c.due_date),
+    c.rate ? '💰 ' + c.rate : '',
+    c.detail ? '📝 ' + c.detail.slice(0, 300) : '',
+    'คนแรกที่กดรับ ได้งานนี้เลยค่ะ'
+  ].filter(Boolean), [{ label: '✋ รับงานนี้', data: `action=ed&c=${c.id}`, display: 'รับงานนี้ค่ะ/ครับ', primary: true }], 'HOOSE · งานตัดต่อ');
+}
+
+export function editingAssignedCard(c: EditCall, taskUrl: string, inClickUp: boolean): LineMessage {
+  return card(`ได้งาน ${c.task_name} แล้ว`, 'งานนี้เป็นของคุณแล้วค่ะ 🎉', [
+    `${c.task_name}${c.parent_name ? ' · ' + c.parent_name : ''}`,
+    '⏰ ส่งงาน: ' + thDateTime(c.due_date),
+    inClickUp ? 'เข้า ClickUp เพื่อดูรายละเอียดและอัปเดตสถานะงานได้เลยค่ะ' : 'ทีมงานจะส่งคำเชิญ ClickUp ให้ แล้วจะได้เห็นงานในนั้นค่ะ'
+  ], inClickUp ? [{ label: 'เปิดงานใน ClickUp', uri: taskUrl, primary: true }] : [], 'HOOSE · งานตัดต่อ');
+}
+
+export function reminderCard(kind: 'not_started' | 'due_soon' | 'overdue' | 'done', t: { name: string; parent_name: string; url: string; due_date: number | null }, name: string): LineMessage {
+  const title = `${t.name}${t.parent_name ? ' · ' + t.parent_name : ''}`;
+  const due = t.due_date ? new Date(t.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : '';
+  const text = {
+    not_started: [`คุณ${name} ยังมีงานนี้ที่ยังไม่ได้เริ่มตัดนะคะ ✂️`, title, 'เข้า ClickUp เพื่อเริ่มงานและอัปเดตสถานะได้เลยค่ะ'],
+    due_soon: [`อีก 3 วันครบกำหนดแล้วนะคะ ⏰ เริ่มแล้วหรือยังคะ?`, title + (due ? ' · ส่ง ' + due : ''), 'ติดอะไรบอกน้องฮูสได้เลยค่ะ'],
+    overdue: [`งานนี้เลยกำหนดส่งแล้วค่ะ 🙏`, title + (due ? ' · กำหนด ' + due : ''), 'อัปเดตสถานะใน ClickUp หรือบอกน้องฮูสว่าต้องการเวลาเพิ่มไหมคะ'],
+    done: [`งานเสร็จสิ้นแล้ว ขอบคุณในความร่วมมือมาก ๆ เลยค่ะ 🙌`, title, 'มีงานใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ก่อนเลยนะคะ 💙']
+  }[kind];
+  return card(text[0], text[0], text.slice(1), kind === 'done' ? [] : [{ label: 'เปิดใน ClickUp', uri: t.url, primary: true }], 'HOOSE · งานตัดต่อ');
 }
