@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { push, verifyIdToken } from '@/lib/line';
-import { appliedCard, surveyCard, withQuickMenu } from '@/lib/line-cards';
+import { DONE_TEXT } from '@/lib/line-cards';
+import { text } from '@/lib/line';
 
 // Application form submitted from the LIFF page (/line/apply).
 // The LIFF ID token proves which LINE user is applying, so nobody can submit for someone else.
@@ -49,9 +50,6 @@ export async function POST(req: Request) {
   if (error) { console.error('apply upsert', error.message); return NextResponse.json({ error: 'บันทึกไม่สำเร็จ ลองอีกครั้ง' }, { status: 500 }); }
 
   await db.from('line_messages').insert({ line_user_id: who.sub, role: 'user', content: `[ส่งใบสมัคร] ${role} · ${position} · ${portfolio_url}` });
-  const needSurvey = role === 'editor' && !cur?.survey_done_at;
-  const status = keep ? cur!.status : 'applied';
-  const msgs = needSurvey ? [appliedCard(full_name, role), surveyCard(0)] : [withQuickMenu(appliedCard(full_name, role), { role, status, survey_done_at: cur?.survey_done_at })];
-  try { await push(who.sub, msgs); } catch (e) { console.error('apply push', (e as Error).message); }
+  try { await push(who.sub, [text(DONE_TEXT)]); } catch (e) { console.error('apply push', (e as Error).message); }
   return NextResponse.json({ ok: true });
 }
