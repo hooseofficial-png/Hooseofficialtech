@@ -30,7 +30,7 @@ export default function TopBar({ label = 'Production Management' }: { label?: st
               {me.position && <span className="pos-tag lg" style={{ alignSelf: 'flex-start' }}>{me.position}</span>}
               <span className="mut ell" style={{ fontSize: 12 }}>{me.email}</span>
               <Link className="btn sm" href="/account" onClick={() => setOpen(false)}>บัญชีของฉัน</Link>
-              {admin && <Link className="btn sm" href="/admin/line" onClick={() => setOpen(false)}>แอดมิน · LINE OA</Link>}
+              {admin && <Link className="btn sm" href="/admin" onClick={() => setOpen(false)}>Super Dashboard</Link>}
               <button className="btn sm" onClick={out}>ออกจากระบบ</button>
             </div>
           )}

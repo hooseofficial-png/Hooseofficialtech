@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { getProfile, lineConfigured, reply, splitReply, startLoading, text, verifySignature, type LineMessage } from '@/lib/line';
-import { DONE_TEXTS, nextStepCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
+import { DONE_TEXTS, editingAssignedCard, nextStepCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
+import { addAssignee, clickupConfigured } from '@/lib/clickup';
+import { clickupIdFor } from '@/lib/editing';
 import { answer, SORRY, type LineUser } from '@/lib/line-agent';
 
 // HOOSE Official LINE OA webhook.
@@ -83,6 +85,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       await reply(ev.replyToken, [first]);
     }
     if (q.get('action') === 'oc') await openCallAnswer(db, u, q, ev.replyToken);
+    if (q.get('action') === 'ed') await claimEditing(db, u, q.get('c') || '', ev.replyToken);
     return;
   }
 
@@ -165,4 +168,26 @@ async function openCallAnswer(db: ReturnType<typeof sbAdmin>, u: LineUser, q: UR
   await reply(replyToken, [text(a === 'accept'
     ? `รับทราบค่ะ ✋ ส่งชื่อคุณให้ทีมงานพิจารณาตำแหน่ง ${cp.position} แล้วนะคะ ถ้าได้รับเลือก น้องฮูสจะส่ง Party Code และรายละเอียดกองถ่ายให้ทันทีค่ะ 💙`
     : 'ไม่เป็นไรเลยค่ะ 😊 ขอบคุณที่แจ้งนะคะ งานหน้าจะส่งมาให้อีกค่ะ')]);
+}
+
+/** Editing job: the first approved editor to tap gets it; assigned in ClickUp right away when we know their ClickUp account. */
+async function claimEditing(db: ReturnType<typeof sbAdmin>, u: LineUser, callId: string, replyToken: string) {
+  if (!/^[0-9a-f-]{36}$/.test(callId)) return;
+  if (!['approved', 'active'].includes(u.status)) { await reply(replyToken, [text('งานนี้สำหรับทีมตัดต่อ HOOSE ที่ผ่านการคัดเลือกแล้วนะคะ 🙏')]); return; }
+  const now = new Date().toISOString();
+  const { data: won } = await db.from('editing_calls').update({ status: 'assigned', assigned_line_user_id: u.line_user_id, assigned_at: now })
+    .eq('id', callId).eq('status', 'open').select('id, clickup_task_id, task_name, parent_name, due_date, detail, rate').maybeSingle();
+  if (!won) { await reply(replyToken, [text('งานนี้มีคนรับไปแล้วค่ะ 🙏 ขอบคุณที่ไวมากนะคะ งานหน้าน้องฮูสจะรีบส่งมาให้เลยค่ะ ✨')]); return; }
+  let inClickUp = false;
+  if (clickupConfigured()) {
+    try {
+      const cid = await clickupIdFor(db, u.line_user_id);
+      if (cid) { await addAssignee(won.clickup_task_id, cid); inClickUp = true; }
+    } catch (e) { console.error('clickup assign', (e as Error).message); }
+  }
+  await db.from('editing_calls').update({ clickup_assigned: inClickUp }).eq('id', won.id);
+  if (!inClickUp) await db.from('line_users').update({ needs_attention: true, attention_at: now,
+    attention_note: `รับงานตัด "${won.task_name}" แล้ว แต่ยัง assign ใน ClickUp ไม่ได้ (ยังไม่ได้ผูกบัญชี ClickUp) · เชิญเป็น guest แล้วเลือกบัญชีในหน้ารายคน` }).eq('line_user_id', u.line_user_id);
+  await db.from('line_messages').insert({ line_user_id: u.line_user_id, role: 'assistant', content: `[รับงานตัด] ${won.task_name}` });
+  await reply(replyToken, [editingAssignedCard(won, `https://app.clickup.com/t/${won.clickup_task_id}`, inClickUp)]);
 }

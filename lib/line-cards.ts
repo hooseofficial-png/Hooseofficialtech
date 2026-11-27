@@ -45,7 +45,7 @@ function card(alt: string, title: string, lines: string[], buttons: Btn[], tag =
 export function liffId() { return process.env.NEXT_PUBLIC_LIFF_ID || process.env.NEXT_LIFF_ID || ''; }
 
 /** Opens a page of the HOOSE LIFF app: apply (form), status (my application), projects. Empty when LIFF is not set up. */
-export function liffUrl(view: 'apply' | 'status' | 'projects', params: Record<string, string> = {}) {
+export function liffUrl(view: 'apply' | 'status' | 'projects' | 'work', params: Record<string, string> = {}) {
   const id = liffId();
   if (!id) return '';
   return `https://liff.line.me/${id}?` + new URLSearchParams({ view, ...params }).toString();
@@ -60,9 +60,10 @@ type QR = { label: string; uri?: string; text?: string };
 export function withQuickMenu(m: LineMessage, u: { role: string | null; status: string; survey_done_at?: string | null }): LineMessage {
   if (!['approved', 'active'].includes(u.status)) return m;
   const items: QR[] = [];
-  const status = liffUrl('status'); const projects = liffUrl('projects');
-  if (status) items.push({ label: '📋 สถานะงานของฉัน', uri: status });
-  if (projects) items.push({ label: '🎬 อัปเดตโปรเจกต์', uri: projects });
+  const status = liffUrl('status'); const projects = liffUrl('projects'); const work = liffUrl('work');
+  if (u.role === 'editor' && work) items.push({ label: '✂️ งานตัดของฉัน', uri: work });
+  else if (status) items.push({ label: '📋 สถานะงานของฉัน', uri: status });
+  if (projects && u.role !== 'editor') items.push({ label: '🎬 อัปเดตโปรเจกต์', uri: projects });
   if (!items.length) return m;
   return { ...m, quickReply: { items: items.map(i => ({ type: 'action', action: { type: 'uri', label: i.label, uri: i.uri } })) } };
 }
@@ -218,4 +219,40 @@ export function projectBrief(p: OcProject & { synopsis?: string | null; delivera
     p.special ? '⚠️ ' + p.special.slice(0, 120) : '',
     p.pm_name ? `☎️ PM: ${p.pm_name}${p.pm_phone ? ' ' + p.pm_phone : ''}` : ''
   ].filter(Boolean).join('\n');
+}
+
+// ---------- Editing jobs (ClickUp) ----------
+
+export type EditCall = { id: string; task_name: string; parent_name: string; due_date: string | null; detail: string; rate: string };
+const thDateTime = (d: string | null) => d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ยังไม่กำหนด';
+
+/** Job call for editors: first to tap "รับงานนี้" gets it (assigned in ClickUp automatically). */
+export function editingCallCard(c: EditCall): LineMessage {
+  return card(`งานตัดต่อใหม่ · ${c.task_name}`, `${c.task_name} ✂️`, [
+    c.parent_name ? '📁 ' + c.parent_name : '',
+    '⏰ ส่งงาน: ' + thDateTime(c.due_date),
+    c.rate ? '💰 ' + c.rate : '',
+    c.detail ? '📝 ' + c.detail.slice(0, 300) : '',
+    'คนแรกที่กดรับ ได้งานนี้เลยค่ะ'
+  ].filter(Boolean), [{ label: '✋ รับงานนี้', data: `action=ed&c=${c.id}`, display: 'รับงานนี้ค่ะ/ครับ', primary: true }], 'HOOSE · งานตัดต่อ');
+}
+
+export function editingAssignedCard(c: EditCall, taskUrl: string, inClickUp: boolean): LineMessage {
+  return card(`ได้งาน ${c.task_name} แล้ว`, 'งานนี้เป็นของคุณแล้วค่ะ 🎉', [
+    `${c.task_name}${c.parent_name ? ' · ' + c.parent_name : ''}`,
+    '⏰ ส่งงาน: ' + thDateTime(c.due_date),
+    inClickUp ? 'เข้า ClickUp เพื่อดูรายละเอียดและอัปเดตสถานะงานได้เลยค่ะ' : 'ทีมงานจะส่งคำเชิญ ClickUp ให้ แล้วจะได้เห็นงานในนั้นค่ะ'
+  ], inClickUp ? [{ label: 'เปิดงานใน ClickUp', uri: taskUrl, primary: true }] : [], 'HOOSE · งานตัดต่อ');
+}
+
+export function reminderCard(kind: 'not_started' | 'due_soon' | 'overdue' | 'done', t: { name: string; parent_name: string; url: string; due_date: number | null }, name: string): LineMessage {
+  const title = `${t.name}${t.parent_name ? ' · ' + t.parent_name : ''}`;
+  const due = t.due_date ? new Date(t.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : '';
+  const text = {
+    not_started: [`คุณ${name} ยังมีงานนี้ที่ยังไม่ได้เริ่มตัดนะคะ ✂️`, title, 'เข้า ClickUp เพื่อเริ่มงานและอัปเดตสถานะได้เลยค่ะ'],
+    due_soon: [`อีก 3 วันครบกำหนดแล้วนะคะ ⏰ เริ่มแล้วหรือยังคะ?`, title + (due ? ' · ส่ง ' + due : ''), 'ติดอะไรบอกน้องฮูสได้เลยค่ะ'],
+    overdue: [`งานนี้เลยกำหนดส่งแล้วค่ะ 🙏`, title + (due ? ' · กำหนด ' + due : ''), 'อัปเดตสถานะใน ClickUp หรือบอกน้องฮูสว่าต้องการเวลาเพิ่มไหมคะ'],
+    done: [`งานเสร็จสิ้นแล้ว ขอบคุณในความร่วมมือมาก ๆ เลยค่ะ 🙌`, title, 'มีงานใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ก่อนเลยนะคะ 💙']
+  }[kind];
+  return card(text[0], text[0], text.slice(1), kind === 'done' ? [] : [{ label: 'เปิดใน ClickUp', uri: t.url, primary: true }], 'HOOSE · งานตัดต่อ');
 }

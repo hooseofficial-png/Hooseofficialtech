@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { myProjects, type MyProject } from './line-projects';
+import { clickupConfigured, editingTasks, stage } from './clickup';
+import { clickupIdFor } from './editing';
 
 // The LINE AI assistant: Claude with a few tools that read and write HOOSE data for ONE LINE user.
 // The user id always comes from the verified webhook, never from the model, so a user can only
@@ -76,7 +78,7 @@ ${RULES}`;
 }
 
 /** Prompt for people who passed: a work assistant with their own projects as context. */
-function memberPrompt(u: LineUser, projects: MyProject[]) {
+function memberPrompt(u: LineUser, projects: MyProject[], editing = '') {
   const proj = projects.length ? projects.map(p => [
     `• ${p.name}${p.brand ? ' (' + p.brand + ')' : ''} · ตำแหน่ง ${p.position || '-'} · ${p.state}`,
     `  วันถ่าย ${p.start_date || 'ยังไม่กำหนด'}${p.end_date && p.end_date !== p.start_date ? ' ถึง ' + p.end_date : ''}${p.call_time ? ' · คอล ' + p.call_time.slice(0, 5) : ''}${p.locations?.length ? ' · ' + p.locations.join(', ') : ''}`,
@@ -94,6 +96,7 @@ ${profile(u)}
 
 โปรเจกต์ของเขา (ข้อมูลล่าสุด ใช้ตอบได้เลย):
 ${proj}
+${editing ? '\nงานตัดต่อใน ClickUp ของเขา (ข้อมูลล่าสุด):\n' + editing + '\n- ถามงานตัด กำหนดส่ง หรือสถานะ → ตอบจากรายการนี้ และชวนอัปเดตสถานะใน ClickUp' : ''}
 
 ทำอะไรเมื่อไร:
 - ถามคิว วันถ่าย สถานที่ เวลาคอล PM หรือ Party Code → ตอบจากรายการโปรเจกต์ข้างบน (บอก Party Code เฉพาะโปรเจกต์ที่ "ยืนยันแล้ว")
@@ -241,7 +244,9 @@ export async function answer(db: SupabaseClient, u: LineUser, userText: string):
     .eq('line_user_id', u.line_user_id).order('id', { ascending: false }).limit(HISTORY);
   const messages: Msg[] = [...cleanHistory((past || []).reverse()), { role: 'user', content: userText }];
   const member = ['approved', 'active'].includes(u.status);
-  const sys = member ? memberPrompt(u, await myProjects(db, u.line_user_id, u.profile_id || null)) : applicantPrompt(u); // fixed for the whole tool loop
+  const sys = member
+    ? memberPrompt(u, await myProjects(db, u.line_user_id, u.profile_id || null), u.role === 'editor' ? await editingContext(db, u.line_user_id) : '')
+    : applicantPrompt(u); // fixed for the whole tool loop
   const extras: Extras = { card: null };
   let out = '';
   let dropBlocks = false;
@@ -270,3 +275,16 @@ export async function answer(db: SupabaseClient, u: LineUser, userText: string):
 }
 
 export { SORRY };
+
+/** Short list of this editor's open ClickUp tasks for the member prompt ('' when not linked or on error). */
+async function editingContext(db: SupabaseClient, lineUserId: string): Promise<string> {
+  if (!clickupConfigured()) return '';
+  try {
+    const cid = await clickupIdFor(db, lineUserId);
+    if (!cid) return '';
+    const open = (await editingTasks()).filter(t => t.assignees.some(a => a.id === cid) && stage(t) !== 'done')
+      .sort((a, b) => (a.due_date || 9e15) - (b.due_date || 9e15)).slice(0, 12);
+    if (!open.length) return 'ไม่มีงานค้าง';
+    return open.map(t => `• ${t.name}${t.parent_name ? ' (' + t.parent_name + ')' : ''} · สถานะ ${t.status} · ส่ง ${t.due_date ? new Date(t.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : 'ไม่กำหนด'}`).join('\n');
+  } catch { return ''; }
+}

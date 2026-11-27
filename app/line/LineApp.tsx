@@ -15,7 +15,7 @@ type Liff = {
   isInClient(): boolean; closeWindow(): void;
 };
 declare global { interface Window { liff?: Liff } }
-type View = 'apply' | 'status' | 'projects';
+type View = 'apply' | 'status' | 'projects' | 'work';
 type Me = {
   display_name: string; picture_url: string; full_name: string; phone: string; email: string; role: string | null; status: string;
   position: string; portfolio_url: string; survey: Record<string, string | string[]>; survey_done_at: string | null; interview_url: string;
@@ -77,7 +77,7 @@ export default function LineApp({ liffId, view: initial }: { liffId: string; vie
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    const v = q.get('view'); if (v === 'apply' || v === 'status' || v === 'projects') setView(v);
+    const v = q.get('view'); if (v === 'apply' || v === 'status' || v === 'projects' || v === 'work') setView(v);
     const role = q.get('role'); if (role === 'editor' || role === 'crew') set('role', role);
     if (!liffId) { setErr('ระบบยังไม่ได้ตั้งค่า LIFF ID'); setState('error'); return; }
     loadSdk().then(async l => {
@@ -85,6 +85,7 @@ export default function LineApp({ liffId, view: initial }: { liffId: string; vie
       if (!l.isLoggedIn()) { l.login({ redirectUri: window.location.href }); return; }
       setLiff(l);
       const vv = (q.get('view') as View) || initial;
+      if (vv === 'work') { setState('ready'); return; }
       if (vv === 'apply') {
         try { const p = await l.getProfile(); setF(x => ({ ...x, full_name: x.full_name || p.displayName })); } catch { /* name stays empty */ }
         setState('form');
@@ -115,10 +116,10 @@ export default function LineApp({ liffId, view: initial }: { liffId: string; vie
       <div style={{ background: 'var(--blue)', color: '#fff', borderRadius: 14, padding: '14px 16px' }}>
         <div style={{ fontWeight: 700, letterSpacing: '.08em', fontSize: 13 }}>HOOSE</div>
         <div style={{ fontWeight: 700, fontSize: 18, marginTop: 4 }}>
-          {view === 'apply' ? `ใบสมัคร${f.role === 'editor' ? 'นักตัดต่อ' : 'ทีมโปรดักชัน'} 📝` : view === 'status' ? 'สถานะของฉัน 📋' : 'โปรเจกต์ของฉัน 🎬'}
+          {view === 'apply' ? `ใบสมัคร${f.role === 'editor' ? 'นักตัดต่อ' : 'ทีมโปรดักชัน'} 📝` : view === 'status' ? 'สถานะของฉัน 📋' : view === 'work' ? 'งานตัดของฉัน ✂️' : 'โปรเจกต์ของฉัน 🎬'}
         </div>
       </div>
-      {view !== 'apply' && (
+      {view !== 'apply' && view !== 'work' && (
         <div className="seg" role="tablist" style={{ alignSelf: 'flex-start' }}>
           <button className={view === 'status' ? 'on' : ''} onClick={() => go('status')}>สถานะ</button>
           <button className={view === 'projects' ? 'on' : ''} onClick={() => go('projects')}>โปรเจกต์</button>
@@ -160,6 +161,7 @@ export default function LineApp({ liffId, view: initial }: { liffId: string; vie
 
       {view === 'status' && state === 'ready' && (me ? <Status me={me} back={back} /> : <NotYet back={back} />)}
       {view === 'projects' && state === 'ready' && <Projects list={projects} me={me} />}
+      {view === 'work' && state === 'ready' && liff && <Work liff={liff} back={back} />}
     </main>
   );
 }
@@ -245,4 +247,53 @@ function Projects({ list, me }: { list: Project[]; me: Me | null }) {
           {p.upcoming.map((e, i) => <span key={i} style={{ fontSize: 13 }}>{EVENT_TH[e.type] || e.type} {d(e.date)}{e.time ? ' ' + e.time.slice(0, 5) : ''} · {e.title}</span>)}
         </div>)}
     </section>))}</>;
+}
+
+type WTask = { id: string; name: string; parent_name: string; url: string; status: string; stage: string; due_date: number | null; date_done: number | null };
+type WorkData = { linked: boolean; reason?: string; stats?: { active: number; todo: number; review: number; overdue: number; dueSoon: number; done30: number; onTime: number | null }; open?: WTask[]; done?: WTask[] };
+
+/** Editor landing: current ClickUp jobs, due dates and a small performance summary. */
+function Work({ liff, back }: { liff: Liff; back: React.ReactNode }) {
+  const [w, setW] = useState<WorkData | null>(null); const [err, setErr] = useState('');
+  useEffect(() => {
+    fetch('/api/line/work', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: liff.getIDToken() }) })
+      .then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) setErr(j.error || 'โหลดไม่สำเร็จ'); else setW(j); });
+  }, [liff]);
+  if (err) return <div className="card"><b>เปิดไม่ได้</b><span className="mut">{err}</span></div>;
+  if (!w) return <div className="card"><span className="mut">กำลังโหลดงาน…</span></div>;
+  if (!w.linked) return (
+    <div className="card" style={{ gap: 8 }}>
+      <b>{w.reason === 'not_member' ? 'หน้านี้สำหรับทีมตัดต่อ HOOSE ✂️' : 'ยังไม่เห็นงานใน ClickUp ของคุณ'}</b>
+      <span className="mut">{w.reason === 'not_member' ? 'เมื่อผ่านการคัดเลือกแล้ว งานและกำหนดส่งจะขึ้นที่นี่ค่ะ' : 'ทีมงานกำลังผูกบัญชี ClickUp ให้ ถ้ารอนานพิมพ์บอกน้องฮูสในแชทได้เลยค่ะ'}</span>{back}
+    </div>);
+  const s = w.stats!;
+  const due = (t: WTask) => {
+    if (!t.due_date) return 'ยังไม่กำหนดส่ง';
+    const days = Math.ceil((t.due_date - Date.now()) / 864e5);
+    const dd = new Date(t.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+    return days < 0 ? `เลยกำหนด ${-days} วัน (${dd})` : days === 0 ? `ส่งวันนี้ (${dd})` : `อีก ${days} วัน (${dd})`;
+  };
+  const STAGE: Record<string, string> = { todo: 'ยังไม่เริ่ม', doing: 'กำลังตัด', review: 'รอตรวจ / แก้', done: 'เสร็จแล้ว' };
+  const tile = (label: string, v: string | number, hot = false) => (
+    <div className="card" style={{ padding: 12, gap: 2 }}><span className="mut" style={{ fontSize: 11 }}>{label}</span><b style={{ fontSize: 22, color: hot ? 'var(--blue)' : 'var(--ink)' }}>{v}</b></div>);
+  return <>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+      {tile('งานที่ถืออยู่', s.active, s.active > 0)}{tile('เลยกำหนด', s.overdue, s.overdue > 0)}{tile('ใกล้ส่ง (3 วัน)', s.dueSoon)}
+      {tile('เสร็จ 30 วัน', s.done30)}{tile('ส่งตรงเวลา', s.onTime === null ? '–' : s.onTime + '%')}{tile('รอตรวจ / แก้', s.review)}
+    </div>
+    <section className="card" style={{ gap: 10 }}>
+      <h2>งานปัจจุบัน</h2>
+      {!w.open!.length ? <span className="mut">ตอนนี้ไม่มีงานค้าง 🙌 มีงานใหม่น้องฮูสจะส่งให้ในแชทค่ะ</span> : w.open!.map(t => (
+        <a key={t.id} href={t.url} target="_blank" rel="noreferrer" style={{ display: 'flex', flexDirection: 'column', gap: 2, borderBottom: '1px solid var(--line)', paddingBottom: 8, color: 'inherit' }}>
+          <div className="between" style={{ gap: 8 }}><b className="ell">{t.name}</b><span className={t.stage === 'todo' ? 'chip o' : 'chip lb'}>{STAGE[t.stage]}</span></div>
+          <span className="mut" style={{ fontSize: 12 }}>{t.parent_name ? t.parent_name + ' · ' : ''}{due(t)}</span>
+        </a>))}
+    </section>
+    {w.done!.length > 0 && (
+      <section className="card" style={{ gap: 6 }}>
+        <h2>เสร็จล่าสุด</h2>
+        {w.done!.map(t => <span key={t.id} style={{ fontSize: 13 }}>✓ {t.name}{t.parent_name ? <span className="mut"> · {t.parent_name}</span> : null}</span>)}
+      </section>)}
+    {back}
+  </>;
 }

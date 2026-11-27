@@ -20,7 +20,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const b = await req.json().catch(() => ({})) as { status?: string; note?: string; notify?: string; memory?: string; resolve?: boolean; interview_url?: string };
+  const b = await req.json().catch(() => ({})) as { status?: string; note?: string; notify?: string; memory?: string; resolve?: boolean; interview_url?: string; clickup_user_id?: number | null };
   const patch: Record<string, unknown> = {};
   if (b.status !== undefined) {
     if (!(STATUSES as readonly string[]).includes(b.status)) return NextResponse.json({ error: 'bad status' }, { status: 400 });
@@ -34,6 +34,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     patch.interview_url = url.slice(0, 500);
   }
   if (b.status === 'interview' && !patch.interview_url) return NextResponse.json({ error: 'ใส่ลิงก์นัดสัมภาษณ์ก่อน' }, { status: 400 });
+  if (b.clickup_user_id !== undefined) patch.clickup_user_id = b.clickup_user_id ? Number(b.clickup_user_id) : null;
   if (b.resolve) { patch.needs_attention = false; patch.attention_note = ''; }
   const db = sbAdmin();
   if (Object.keys(patch).length) {
