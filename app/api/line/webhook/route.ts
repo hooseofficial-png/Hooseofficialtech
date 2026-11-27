@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
-import { getProfile, lineConfigured, reply, text, verifySignature } from '@/lib/line';
+import { getProfile, lineConfigured, reply, startLoading, text, verifySignature } from '@/lib/line';
 import { nextStepCard, welcomeCard } from '@/lib/line-cards';
 import { answer, type LineUser } from '@/lib/line-agent';
 
@@ -8,7 +8,8 @@ import { answer, type LineUser } from '@/lib/line-agent';
 // LINE Developers → Messaging API → Webhook URL: https://app.hooseofficial.site/api/line/webhook
 //  follow          → save the person, send the welcome card (3 role buttons)
 //  postback role   → save the role, send the next recruiting step
-//  text message    → "เมนู" shows the welcome card again; anything else goes to the AI assistant
+//  text message    → "เมนู" shows the welcome card, "สมัคร" the application form card; anything else shows
+//                    the typing dots and goes to the AI assistant
 // Always answers 200 so LINE does not retry; failures are logged.
 
 export const runtime = 'nodejs';
@@ -23,7 +24,8 @@ type LineEvent = {
 };
 
 const MENU = /^(เมนู|menu|เริ่มใหม่|start)$/i;
-const USER_COLS = 'line_user_id, display_name, role, status, position, portfolio_url';
+const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url';
+const APPLY = /^(สมัคร|ใบสมัคร|apply)$/i;
 
 export async function POST(req: Request) {
   const raw = await req.text();
@@ -79,6 +81,8 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
     if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('ตอนนี้ผู้ช่วยอ่านได้เฉพาะข้อความตัวอักษรครับ ส่งลิงก์ผลงานเป็นข้อความได้เลย')]); return; }
     const msg = (ev.message.text || '').trim();
     if (MENU.test(msg)) { await reply(ev.replyToken, [welcomeCard(u.display_name)]); return; }
+    if (APPLY.test(msg)) { await reply(ev.replyToken, [u.role ? nextStepCard(u.role) : welcomeCard(u.display_name)]); return; }
+    await startLoading(userId, 30);
     let out: string;
     try { out = await answer(db, u, msg); }
     catch (e) { console.error('line agent failed', (e as Error).message); out = 'ขอโทษครับ ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งในอีกสักครู่'; }

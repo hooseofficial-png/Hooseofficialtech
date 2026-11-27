@@ -7,6 +7,8 @@ import { ini } from '@/lib/domain';
 export default function TopBar({ label = 'Production Management' }: { label?: string }) {
   const [me, setMe] = useState<{ email: string; name: string; position: string } | null>(null);
   const [open, setOpen] = useState(false);
+  const [admin, setAdmin] = useState<boolean | null>(null);
+  useEffect(() => { if (open && admin === null) fetch('/api/admin/me').then(r => r.json()).then(j => setAdmin(!!j.admin)).catch(() => setAdmin(false)); }, [open, admin]);
   useEffect(() => {
     const show = (m: ReturnType<typeof cachedMe> | null) => m && setMe({ email: m.email, name: m.profile?.full_name || '', position: m.profile?.position || '' });
     show(cachedMe()); getMe().then(show);
@@ -28,6 +30,7 @@ export default function TopBar({ label = 'Production Management' }: { label?: st
               {me.position && <span className="pos-tag lg" style={{ alignSelf: 'flex-start' }}>{me.position}</span>}
               <span className="mut ell" style={{ fontSize: 12 }}>{me.email}</span>
               <Link className="btn sm" href="/account" onClick={() => setOpen(false)}>บัญชีของฉัน</Link>
+              {admin && <Link className="btn sm" href="/admin/line" onClick={() => setOpen(false)}>แอดมิน · LINE OA</Link>}
               <button className="btn sm" onClick={out}>ออกจากระบบ</button>
             </div>
           )}
