@@ -51,8 +51,8 @@ export default function EditorHome() {
       : !w ? <div className="empty">กำลังโหลด…</div>
       : !w.linked ? (
         <div className="card" style={{ gap: 8 }}>
-          <b>{w.reason === 'no_account' ? 'ยังไม่เห็นงานใน ClickUp ของคุณ' : 'ยังเชื่อมงานไม่ได้'}</b>
-          <span className="mut">{w.reason === 'no_account' ? 'ทีมงานกำลังผูกบัญชี ClickUp ให้ ถ้ารอนาน ทักน้องฮูสใน LINE ได้เลยค่ะ' : 'ทักน้องฮูสใน LINE เพื่อให้ทีมช่วยตรวจสอบค่ะ'}</span>
+          <b>{w.reason === 'no_account' ? 'คุณยังไม่มีงานอัพเดทใหม่ในตอนนี้' : 'ยังเชื่อมงานไม่ได้'}</b>
+          <span className="mut">{w.reason === 'no_account' ? 'รอการอัพเดทจากทีม HOOSE นะคะ มีงานใหม่เมื่อไหร่ น้องฮูสจะแจ้งใน LINE ทันทีค่ะ 💙' : 'ทักน้องฮูสใน LINE เพื่อให้ทีมช่วยตรวจสอบค่ะ'}</span>
         </div>)
       : <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>

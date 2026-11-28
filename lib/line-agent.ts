@@ -10,7 +10,7 @@ import { clickupIdFor } from './editing';
 export type LineUser = {
   line_user_id: string; display_name: string; full_name: string; role: string | null; status: string;
   position: string; portfolio_url: string; phone?: string; email?: string; memory?: string;
-  survey?: Record<string, string | string[]>; survey_done_at?: string | null; profile_id?: string | null;
+  survey?: Record<string, string | string[]>; survey_done_at?: string | null; profile_id?: string | null; interview_booked_at?: string | null;
 };
 
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
@@ -21,7 +21,7 @@ const MEMORY_MAX = 1500; // characters of saved notes per person (long-term memo
 const ROLE_TH: Record<string, string> = { editor: 'นักตัดต่อ', crew: 'ทีมโปรดักชัน', manager: 'PM / Producer' };
 const STATUS_TH: Record<string, string> = {
   new: 'ยังไม่เริ่มสมัคร', applying: 'เลือกบทบาทแล้ว ยังไม่ส่งใบสมัคร', applied: 'ส่งใบสมัครแล้ว รอทีมตรวจผลงาน',
-  interview: 'ผ่านรอบผลงาน รอนัดคุยกับทีม', onboarding: 'ส่งเอกสารและแบบฟอร์มข้อมูลแล้ว รอพิมพ์ เสร็จสิ้น', approved: 'ผ่านแล้ว', rejected: 'รอบนี้ยังไม่ผ่าน', active: 'เป็นทีมงาน HOOSE แล้ว', blocked: 'ระงับ'
+  interview: 'ผ่านรอบผลงาน รอนัดเวลาคุยกับทีม (นัดแล้วพิมพ์ เสร็จสิ้น)', onboarding: 'ส่งเอกสารและแบบฟอร์มข้อมูลแล้ว รอพิมพ์ เสร็จสิ้น', approved: 'ผ่านแล้ว รอสร้างบัญชี HOOSE (เสร็จแล้วพิมพ์ เสร็จสิ้น)', rejected: 'รอบนี้ยังไม่ผ่าน', active: 'เป็นทีมงาน HOOSE แล้ว', blocked: 'ระงับ'
 };
 
 const PERSONA = `บุคลิก:
@@ -34,7 +34,8 @@ const PERSONA = `บุคลิก:
 - กระชับ 2-4 ประโยค (ไม่เกิน 6 ประโยค) ไม่เกริ่น ไม่สรุปซ้ำ ไม่ทวนข้อมูลที่ผู้ใช้ไม่ได้ถาม ห้ามใช้ Markdown หัวข้อ หรือรายการ
 - ถ้ามีขั้นถัดไปที่ผู้ใช้ต้องทำ บอกสั้น ๆ 1 อย่าง ถ้าไม่มีอะไรต้องทำแล้ว ให้ปิดบทสนทนาอย่างอบอุ่น (เช่น ขอบคุณ อวยพร บอกว่าพร้อมช่วยเสมอ) ไม่ต้องถามต่อ ไม่ยืดเยื้อ
 - ห้ามถามสิ่งที่รู้อยู่แล้ว (ดูข้อมูลผู้ใช้ สิ่งที่จำไว้ และแชทก่อนหน้า) ถ้ารู้แล้วให้ใช้เลย
-- ถ้าไม่แน่ใจว่าผู้ใช้หมายถึงอะไร ถามกลับสั้น ๆ 1 คำถาม`;
+- ถ้าไม่แน่ใจว่าผู้ใช้หมายถึงอะไร ถามกลับสั้น ๆ 1 คำถาม
+- กฎสำคัญทุกครั้ง: เมื่อขอให้ผู้ใช้ทำอะไร (กรอกฟอร์ม ส่งลิงก์ผลงาน เลือกเวลานัด อ่านเอกสาร สร้างบัญชี) ให้ปิดท้ายข้อความด้วย: เสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ เพื่อให้น้องฮูสรู้ว่าทำต่อขั้นถัดไปได้`;
 
 const RULES = `ความลับและภาษา (สำคัญมาก):
 - พูดถึงได้เฉพาะข้อมูลของผู้ใช้คนนี้ โปรเจกต์ของเขา และสิ่งที่คุยกันในแชทนี้
@@ -62,8 +63,8 @@ ${PERSONA}
 ${profile(u)}
 
 เส้นทางการสมัคร (นำผู้ใช้ไปทีละขั้น):
-- นักตัดต่อ: ① กรอกใบสมัคร (Google Form ปุ่ม "กรอกใบสมัคร") → ② เลือกผลงานที่ดีที่สุด ส่งลิงก์มาในแชท แล้วพิมพ์ "เรียบร้อย" → ③ ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
-- ทีมโปรดักชัน: ① ชื่อ-นามสกุล → ② ตำแหน่งในกองถ่าย → ③ ผลงานในกองถ่ายที่ชอบที่สุด (ลิงก์) แล้วพิมพ์ "เรียบร้อย" → ④ ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
+- นักตัดต่อ: ① กรอกใบสมัคร (Google Form ปุ่ม "กรอกใบสมัคร") → ② เลือกผลงานที่ดีที่สุด ส่งลิงก์มาในแชท แล้วพิมพ์ "เสร็จสิ้น" → ③ ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
+- ทีมโปรดักชัน: ① ชื่อ-นามสกุล → ② ตำแหน่งในกองถ่าย → ③ ผลงานในกองถ่ายที่ชอบที่สุด (ลิงก์) แล้วพิมพ์ "เสร็จสิ้น" → ④ ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
 - ผ่านรอบผลงาน → นัดคุยกับทีม 30 นาที (ปุ่มเลือกเวลาในการ์ด) → ทีมส่งเอกสารและแบบฟอร์มข้อมูล → กรอกเสร็จพิมพ์ "เสร็จสิ้น" → สร้างบัญชี HOOSE เพื่อดูแดชบอร์ดและอัปเดตงาน
 - สถานะนัดคุย: ชวนกดเลือกเวลาในการ์ดที่ส่งไป · สถานะส่งเอกสารแล้ว: ชวนอ่านเอกสาร กรอกแบบฟอร์ม แล้วพิมพ์ "เสร็จสิ้น"
 - ห้ามบอกขั้นตอนหรือระยะเวลาอื่นนอกจากนี้
@@ -73,7 +74,7 @@ ${profile(u)}
 - นักตัดต่อที่ยังไม่กรอกฟอร์มหรือขอฟอร์ม → show_card kind=form
 - ยังขาดข้อมูลข้อไหน → ถามข้อถัดไปข้อเดียว ด้วยคำถามชวนคิด เช่น "ผลงานไหนที่คุณภูมิใจที่สุดคะ" แทน "ส่งพอร์ตมา"
 - ผู้ใช้บอกชื่อจริง ตำแหน่ง หรือส่งลิงก์ผลงาน → update_my_application ทันที
-- ส่งลิงก์ผลงานแล้วแต่ยังไม่พิมพ์ "เรียบร้อย" → บอกว่าถ้าส่งครบแล้ว พิมพ์ "เรียบร้อย" เพื่อไปขั้นถัดไป
+- ส่งลิงก์ผลงานแล้วแต่ยังไม่พิมพ์ "เสร็จสิ้น" → บอกว่าถ้าส่งครบแล้ว พิมพ์ "เสร็จสิ้น" เพื่อไปขั้นถัดไป
 - ส่งครบแล้ว (สถานะรอทีมตรวจ) → ขอบคุณสั้น ๆ บอกว่าทีมงานกำลังรีวิวและจะแจ้งในแชทนี้ แล้วจบบทสนทนาอย่างอบอุ่น
 
 ${RULES}`;
@@ -189,12 +190,12 @@ async function runTool(db: SupabaseClient, u: LineUser, name: string, input: Rec
     if (!Object.keys(patch).length) return { error: 'nothing to save' };
     const n = { ...u, ...patch };
     const complete = !!n.portfolio_url && (n.role === 'editor' || (n.role === 'crew' && !!n.full_name && !!n.position));
-    if (u.status === 'new') patch.status = 'applying'; // finishing happens when they type "เรียบร้อย"
+    if (u.status === 'new') patch.status = 'applying'; // finishing happens when they type "เสร็จสิ้น"
     const { data, error } = await db.from('line_users').update(patch).eq('line_user_id', u.line_user_id)
       .select('full_name, role, status, position, portfolio_url').single();
     if (error) return { error: error.message };
     Object.assign(u, data); // later tool calls see the new status; the system prompt stays as sent
-    return { saved: true, ...data, still_missing: complete ? ['พิมพ์ "เรียบร้อย" เพื่อยืนยันส่งใบสมัคร'] : [!n.full_name && n.role === 'crew' ? 'ชื่อ-นามสกุล' : '', !n.position && n.role === 'crew' ? 'ตำแหน่ง' : '', !n.portfolio_url ? 'ผลงานที่ดีที่สุด 1 ชิ้น' : ''].filter(Boolean) };
+    return { saved: true, ...data, still_missing: complete ? ['พิมพ์ "เสร็จสิ้น" เพื่อยืนยันส่งใบสมัคร'] : [!n.full_name && n.role === 'crew' ? 'ชื่อ-นามสกุล' : '', !n.position && n.role === 'crew' ? 'ตำแหน่ง' : '', !n.portfolio_url ? 'ผลงานที่ดีที่สุด 1 ชิ้น' : ''].filter(Boolean) };
   }
   if (name === 'list_open_calls') {
     if (u.role !== 'crew' && u.role !== 'editor') return { error: 'เฉพาะทีมงาน HOOSE' };

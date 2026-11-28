@@ -75,6 +75,11 @@ export const DONE_TEXTS = [
 ];
 export const DONE_TEXT = DONE_TEXTS.join('\n');
 
+/** Every step that asks the person to do something ends with this, so the chat knows when to move on. */
+export const FINISH_HINT = 'เสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ';
+/** Words that mean "I've done the step" (เสร็จสิ้น is the one we ask for). */
+export const DONE_RE = /^(เสร็จสิ้น|เสร็จสิ้นแล้ว|เรียบร้อย|เรียบร้อยแล้ว|เสร็จแล้ว|ส่งครบแล้ว|ครบแล้ว|กรอกเสร็จแล้ว|กรอกแล้ว|ส่งฟอร์มแล้ว|นัดแล้ว|นัดเรียบร้อย|นัดเสร็จแล้ว|done)\s*(ค่ะ|ครับ|คะ|นะคะ|จ้า|จ้ะ)?[!！.]*$/i;
+
 // ---------- funnel cards ----------
 
 export function welcomeCard(name?: string): LineMessage {
@@ -90,7 +95,7 @@ export function welcomeCard(name?: string): LineMessage {
 
 export function nextStepCard(role: string): LineMessage {
   if (role === 'editor') return card('สมัครนักตัดต่อ · กรอกใบสมัคร', 'มาเริ่มสมัครนักตัดต่อกันเลย ✨',
-    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② ส่งลิงก์ผลงานที่ดีที่สุดมาในแชทนี้ แล้วพิมพ์ "เรียบร้อย" ค่ะ 🎬'],
+    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② ส่งลิงก์ผลงานที่ดีที่สุดมาในแชทนี้', '③ เสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ 🎬'],
     [{ label: '📝 กรอกใบสมัคร', uri: EDITOR_APPLY_FORM, primary: true }]);
   if (role === 'crew') return { type: 'text', text: 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊' };
   return card('PM / Producer · เปิดแอป HOOSE', 'สำหรับ PM / Producer 📁',
@@ -165,7 +170,7 @@ export const MEETING_URL = 'https://calendly.com/hooseofficial/30min';
  * interview (book a call) · onboarding (documents + data form) · approved (create a HOOSE account) · rejected · active.
  */
 export function resultCard(status: string, role: string | null, message: string, interviewUrl = '', linkToken = '', docs: { name: string; url: string }[] = []): LineMessage | null {
-  if (status === 'interview') return card('ผ่านรอบผลงาน · นัดคุยกับทีม', 'ผ่านรอบผลงานแล้วค่ะ 🎉', [message],
+  if (status === 'interview') return card('ผ่านรอบผลงาน · นัดคุยกับทีม', 'ผ่านรอบผลงานแล้วค่ะ 🎉', [message, 'นัดเวลาเสร็จแล้ว พิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ'],
     [{ label: '🗓️ เลือกเวลานัดคุย', uri: interviewUrl || MEETING_URL, primary: true }]);
   if (status === 'onboarding') return card('เอกสารและแบบฟอร์มข้อมูล', 'คุยกันเรียบร้อย ขั้นต่อไปค่ะ 📄', [
     message,
@@ -177,7 +182,7 @@ export function resultCard(status: string, role: string | null, message: string,
     { label: '📝 กรอกแบบฟอร์มข้อมูล', uri: EDITOR_ONBOARD_FORM, primary: true }
   ]);
   if (status === 'approved') return card('สร้างบัญชี HOOSE', 'อีกขั้นเดียว สร้างบัญชี HOOSE ค่ะ ✨', [message,
-    'บัญชี HOOSE ใช้ดูแดชบอร์ดงานของคุณและอัปเดตโดยรวม (ใช้เวลา 1 นาที)'],
+    'บัญชี HOOSE ใช้ดูแดชบอร์ดงานของคุณและอัปเดตโดยรวม (ใช้เวลา 1 นาที)', 'สร้างบัญชีเสร็จแล้ว พิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ'],
     linkToken ? [{ label: 'สร้างบัญชี / เข้าสู่ระบบ HOOSE', uri: accountUrl(linkToken), primary: true }] : []);
   if (status === 'rejected') return card('ผลการสมัคร', 'ขอบคุณที่สนใจ HOOSE นะคะ 🙏', [message], []);
   if (status === 'active') return card('ลงทะเบียนทีมงานแล้ว', 'เป็นทีมงาน HOOSE แล้ว 💙', [message],

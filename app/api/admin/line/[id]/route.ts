@@ -35,6 +35,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     patch.interview_url = url.slice(0, 500);
   }
   if (b.status === 'interview' && !patch.interview_url) patch.interview_url = MEETING_URL;
+  if (b.status === 'interview') patch.interview_booked_at = null; // they still need to book (and type "เสร็จสิ้น")
   if (b.clickup_user_id !== undefined) patch.clickup_user_id = b.clickup_user_id ? Number(b.clickup_user_id) : null;
   if (b.resolve) { patch.needs_attention = false; patch.attention_note = ''; }
   const db = sbAdmin();

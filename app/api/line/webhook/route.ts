@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { getProfile, lineConfigured, reply, signLink, splitReply, startLoading, text, verifySignature, type LineMessage } from '@/lib/line';
-import { DONE_TEXTS, nextStepCard, resultCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
+import { ACCOUNT_DONE_TEXTS, DONE_RE, DONE_TEXTS, FINISH_HINT, nextStepCard, resultCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
 import { claimProject } from '@/lib/editing-engine';
 import { answer, SORRY, type LineUser } from '@/lib/line-agent';
 
@@ -27,12 +27,14 @@ type LineEvent = {
 };
 
 const MENU = /^(เมนู|menu|เริ่มใหม่|start)$/i;
-const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory, survey, survey_done_at, profile_id';
+const USER_COLS = 'line_user_id, display_name, full_name, role, status, position, portfolio_url, memory, survey, survey_done_at, profile_id, interview_booked_at';
 const APPLY = /^(สมัคร|ใบสมัคร|apply|liff|ฟอร์ม|ฟอร์มสมัคร)$/i;
 const STATUS = /^(สถานะ|สถานะของฉัน|สถานะงาน|status|เช็กสถานะ|เช็คสถานะ)$/i;
 const URL_RE = /https?:\/\/[^\s]+/i;
-const FORM_DONE = /^(เสร็จสิ้น|เสร็จแล้ว|กรอกเสร็จแล้ว|กรอกแล้ว|ส่งฟอร์มแล้ว|done)\s*(ค่ะ|ครับ|คะ|นะคะ)?[!！.]*$/i;
-const DONE_WORD = /^(เรียบร้อย|เรียบร้อยแล้ว|ส่งครบแล้ว|ครบแล้ว|เสร็จแล้ว|done)\s*(ค่ะ|ครับ|คะ|นะคะ)?[!！.]*$/i;
+const FORM_DONE = DONE_RE;
+const DONE_WORD = DONE_RE;
+/** "นัดมีทติ้งเรียบร้อย", "จองเวลาแล้ว" … after the interview card. */
+const BOOKED = /(นัด|จอง|เลือกเวลา|มีท|meeting|calendly).*(แล้ว|เรียบร้อย|เสร็จ|done)/i;
 const QUESTION = /[?？]|ไหม|มั้ย|อะไร|ยังไง|อย่างไร|เท่าไหร่|เท่าไร|ทำไม|เมื่อไหร่|กี่/;
 
 export async function POST(req: Request) {
@@ -107,6 +109,28 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       return;
     }
 
+    // Interview: they booked a time on the card → "เสร็จสิ้น".
+    if (u.status === 'interview' && (DONE_WORD.test(msg) || BOOKED.test(msg))) {
+      const now = new Date().toISOString(); const name = u.full_name || u.display_name || '';
+      await db.from('line_users').update({ interview_booked_at: now, needs_attention: true, attention_note: 'แจ้งว่านัดเวลาคุยแล้ว', attention_at: now }).eq('line_user_id', userId);
+      const out = [`ขอบคุณค่ะคุณ${name} 🙌 ได้รับแล้วว่านัดเวลาเรียบร้อย ทีม HOOSE จะคุยกับคุณตามเวลาที่นัดไว้นะคะ`,
+        `คุยเสร็จแล้ว น้องฮูสจะส่งเอกสารและแบบฟอร์มข้อมูลมาในแชทนี้ ได้รับแล้วอ่าน กรอกฟอร์ม แล้วพิมพ์ "เสร็จสิ้น" นะคะ 💙`];
+      await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg }, { line_user_id: userId, role: 'assistant', content: out.join('\n') }]);
+      await reply(ev.replyToken, out.map(t => text(t)));
+      return;
+    }
+    // Account step: they say they're done; check the link actually happened.
+    if (u.status === 'approved' && DONE_WORD.test(msg)) {
+      const name = u.full_name || u.display_name || '';
+      const out = u.profile_id
+        ? [resultCard('active', u.role, ACCOUNT_DONE_TEXTS.join(' '))!]
+        : [text(`ยังไม่เห็นบัญชี HOOSE ที่ผูกกับ LINE นี้เลยค่ะคุณ${name} 🙏 กดปุ่มด้านล่าง สร้างบัญชีหรือเข้าสู่ระบบให้เสร็จ แล้วพิมพ์ "เสร็จสิ้น" อีกครั้งนะคะ`),
+           resultCard('approved', u.role, 'สร้างบัญชี / เข้าสู่ระบบ HOOSE', '', signLink(userId))!];
+      await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg }, { line_user_id: userId, role: 'assistant', content: u.profile_id ? '[บัญชีพร้อมแล้ว]' : '[ส่งลิงก์สร้างบัญชีอีกครั้ง]' }]);
+      await reply(ev.replyToken, out);
+      return;
+    }
+
     // Onboarding: documents read + data form sent → "เสร็จสิ้น" → create a HOOSE account.
     if (u.status === 'onboarding' && FORM_DONE.test(msg)) {
       const now = new Date().toISOString();
@@ -143,15 +167,15 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
   }
 }
 
-const BEST_WORK_CREW = 'ขอดูผลงานในกองถ่ายที่คุณชอบที่สุดค่ะ 🎬 ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ส่งครบแล้วพิมพ์ "เรียบร้อย" นะคะ';
-const BEST_WORK_EDITOR = 'ขอดูผลงานที่คุณคิดว่าตัดออกมาดีที่สุดค่ะ ✨ ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ส่งครบแล้วพิมพ์ "เรียบร้อย" นะคะ';
+const BEST_WORK_CREW = 'ขอดูผลงานในกองถ่ายที่คุณชอบที่สุดค่ะ 🎬 ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ' + FINISH_HINT;
+const BEST_WORK_EDITOR = 'ขอดูผลงานที่คุณคิดว่าตัดออกมาดีที่สุดค่ะ ✨ ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ' + FINISH_HINT;
 
 /** What to ask a crew applicant next (never asks again for something already given). */
 function crewPrompt(u: LineUser) {
   if (!u.full_name) return 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊';
   if (!u.position) return `ยินดีที่ได้รู้จักค่ะคุณ${u.full_name} 😊 ปกติคุณทำตำแหน่งอะไรในกองถ่ายคะ? (เช่น Camera Assistant, Gaffer, Art, PA)`;
   if (!u.portfolio_url) return BEST_WORK_CREW;
-  return 'ได้รับลิงก์แล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เรียบร้อย" ได้เลยนะคะ';
+  return 'ได้รับลิงก์แล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เสร็จสิ้น" ได้เลยนะคะ';
 }
 
 /**
@@ -162,9 +186,9 @@ async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string):
   if (!['editor', 'crew'].includes(u.role || '') || !['new', 'applying'].includes(u.status)) return null;
   const ready = (x: LineUser) => !!x.portfolio_url && (u.role === 'editor' || (!!x.full_name && !!x.position));
 
-  // "เรียบร้อย": the applicant says they have sent everything.
+  // "เสร็จสิ้น" (or เรียบร้อย): the applicant says they have sent everything.
   if (DONE_WORD.test(msg)) {
-    if (!ready(u)) return [u.role === 'crew' ? crewPrompt(u) : 'ยังไม่ได้รับลิงก์ผลงานเลยค่ะ 🙏 ส่งลิงก์มาก่อน แล้วพิมพ์ "เรียบร้อย" อีกครั้งนะคะ'];
+    if (!ready(u)) return [u.role === 'crew' ? crewPrompt(u) : 'ยังไม่ได้รับลิงก์ผลงานเลยค่ะ 🙏 ส่งลิงก์มาก่อน แล้วพิมพ์ "เสร็จสิ้น" อีกครั้งนะคะ'];
     const now = new Date().toISOString();
     await db.from('line_users').update({ status: 'applied', applied_at: now, status_changed_at: now }).eq('line_user_id', u.line_user_id);
     u.status = 'applied';
@@ -183,8 +207,8 @@ async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string):
   if (Object.keys(patch).length || u.status === 'new') await db.from('line_users').update({ ...patch, status: 'applying' }).eq('line_user_id', u.line_user_id);
   Object.assign(u, patch);
   if (url && ready(next)) return [u.portfolio_url && !patch.portfolio_url
-    ? 'ได้รับลิงก์เพิ่มแล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เรียบร้อย" ได้เลยนะคะ'
-    : 'ได้รับลิงก์ผลงานแล้วค่ะ ✅ ถ้ามีอีกส่งเพิ่มได้เลย ส่งครบแล้วพิมพ์ "เรียบร้อย" เพื่อไปขั้นถัดไปนะคะ'];
+    ? 'ได้รับลิงก์เพิ่มแล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เสร็จสิ้น" ได้เลยนะคะ'
+    : 'ได้รับลิงก์ผลงานแล้วค่ะ ✅ ถ้ามีอีกส่งเพิ่มได้เลย ส่งครบแล้วพิมพ์ "เสร็จสิ้น" เพื่อไปขั้นถัดไปนะคะ'];
   if (u.role === 'crew') return [crewPrompt(next)];
   return [BEST_WORK_EDITOR];
 }
