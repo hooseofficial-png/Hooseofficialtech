@@ -157,14 +157,28 @@ export function surveyDoneCard(): LineMessage {
 /** Opens the app sign-up and links the new account to this LINE user (signed token from lib/line). */
 export const accountUrl = (token: string) => `${SITE}/line/link?t=${encodeURIComponent(token)}`;
 
-export function resultCard(status: string, role: string | null, message: string, interviewUrl = '', linkToken = ''): LineMessage | null {
-  if (status === 'interview') return card('ผ่านรอบผลงาน · นัดสัมภาษณ์', 'ผ่านรอบผลงานแล้วค่ะ 🎉', [message],
-    interviewUrl ? [{ label: '🗓️ นัดเวลาสัมภาษณ์', uri: interviewUrl, primary: true }] : []);
-  if (status === 'approved') {
-    const btns: Btn[] = linkToken ? [{ label: '🎬 สร้างบัญชีกองถ่าย HOOSE', uri: accountUrl(linkToken), primary: true }] : [];
-    if (role === 'editor') btns.push({ label: '📝 กรอกข้อมูลทีมงาน', uri: EDITOR_ONBOARD_FORM });
-    return card('ผ่านการคัดเลือก · สร้างบัญชีกองถ่าย', 'ยินดีด้วยค่ะ ผ่านการคัดเลือกแล้ว 🎉', [message, 'ขั้นต่อไป: สร้างบัญชีกองถ่าย HOOSE (ใช้เวลา 1 นาที) เพื่อรับงานและเข้าร่วมกองถ่ายค่ะ'], btns);
-  }
+/** Meeting link sent when the portfolio is approved. */
+export const MEETING_URL = 'https://calendly.com/hooseofficial/30min';
+
+/**
+ * Card for each pipeline step the team moves someone to:
+ * interview (book a call) · onboarding (documents + data form) · approved (create a HOOSE account) · rejected · active.
+ */
+export function resultCard(status: string, role: string | null, message: string, interviewUrl = '', linkToken = '', docs: { name: string; url: string }[] = []): LineMessage | null {
+  if (status === 'interview') return card('ผ่านรอบผลงาน · นัดคุยกับทีม', 'ผ่านรอบผลงานแล้วค่ะ 🎉', [message],
+    [{ label: '🗓️ เลือกเวลานัดคุย', uri: interviewUrl || MEETING_URL, primary: true }]);
+  if (status === 'onboarding') return card('เอกสารและแบบฟอร์มข้อมูล', 'คุยกันเรียบร้อย ขั้นต่อไปค่ะ 📄', [
+    message,
+    docs.length ? '① อ่านเอกสารด้านล่าง' : '',
+    '② กรอกแบบฟอร์มข้อมูลทีมงาน',
+    '③ เสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้'
+  ].filter(Boolean), [
+    ...docs.slice(0, 3).map(d => ({ label: '📄 ' + d.name.slice(0, 30), uri: d.url })),
+    { label: '📝 กรอกแบบฟอร์มข้อมูล', uri: EDITOR_ONBOARD_FORM, primary: true }
+  ]);
+  if (status === 'approved') return card('สร้างบัญชี HOOSE', 'อีกขั้นเดียว สร้างบัญชี HOOSE ค่ะ ✨', [message,
+    'บัญชี HOOSE ใช้ดูแดชบอร์ดงานของคุณและอัปเดตโดยรวม (ใช้เวลา 1 นาที)'],
+    linkToken ? [{ label: 'สร้างบัญชี / เข้าสู่ระบบ HOOSE', uri: accountUrl(linkToken), primary: true }] : []);
   if (status === 'rejected') return card('ผลการสมัคร', 'ขอบคุณที่สนใจ HOOSE นะคะ 🙏', [message], []);
   if (status === 'active') return card('ลงทะเบียนทีมงานแล้ว', 'เป็นทีมงาน HOOSE แล้ว 💙', [message],
     liffUrl('projects') ? [{ label: '🎬 ดูโปรเจกต์', uri: liffUrl('projects'), primary: true }] : []);
@@ -173,8 +187,8 @@ export function resultCard(status: string, role: string | null, message: string,
 
 /** After the app account is linked. */
 export const ACCOUNT_DONE_TEXTS = [
-  'บัญชีกองถ่าย Hooseofficial ของคุณเสร็จสิ้นแล้วค่ะ 🎉',
-  'ต่อจากนี้ น้องฮูสจะเป็นผู้ช่วยการทำงานของคุณตลอดงาน คอยอัปเดตกองถ่ายและตอบคำถามให้นะคะ มีอะไรสงสัยพิมพ์ถามได้เลยค่ะ 💙'
+  'บัญชี HOOSE ของคุณพร้อมแล้วค่ะ 🎉',
+  'ต่อจากนี้ น้องฮูสจะเป็นผู้ช่วยของคุณ คอยแจ้งงานใหม่ อัปเดตงาน และตอบคำถามให้นะคะ มีอะไรพิมพ์ถามได้เลยค่ะ 💙'
 ];
 
 // ---------- Open Call ----------

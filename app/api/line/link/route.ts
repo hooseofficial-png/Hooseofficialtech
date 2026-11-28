@@ -17,10 +17,10 @@ export async function POST(req: Request) {
   const db = sbAdmin();
   const { data: lu } = await db.from('line_users').select('status, role, profile_id, full_name, phone').eq('line_user_id', lineUserId).maybeSingle();
   if (!lu) return NextResponse.json({ error: 'ไม่พบข้อมูลจาก LINE' }, { status: 404 });
-  if (!['approved', 'active'].includes(lu.status)) return NextResponse.json({ error: 'ยังไม่ผ่านการคัดเลือก' }, { status: 403 });
-  if (lu.profile_id && lu.profile_id !== user.id) return NextResponse.json({ error: 'LINE นี้ผูกกับบัญชีอื่นแล้ว ติดต่อทีม HOOSE ในแชทได้เลยค่ะ' }, { status: 409 });
-
-  const first = !lu.profile_id;
+  if (!['approved', 'active'].includes(lu.status)) return NextResponse.json({ error: 'ยังไม่ถึงขั้นสร้างบัญชี ทำขั้นตอนในแชทให้ครบก่อนนะคะ' }, { status: 403 });
+  // The signed link came from this person's own LINE chat, so the account they are signed in with now wins
+  // (lets them switch to the right account if they first linked another one).
+  const first = lu.profile_id !== user.id;
   const now = new Date().toISOString();
   await db.from('line_users').update({ profile_id: user.id, status: 'active', ...(lu.status !== 'active' ? { status_changed_at: now } : {}) }).eq('line_user_id', lineUserId);
   // Fill empty profile fields from the application (never overwrite what the person typed in the app).
@@ -36,5 +36,5 @@ export async function POST(req: Request) {
     try { await push(lineUserId, msgs); } catch (e) { console.error('link push', (e as Error).message); }
     await db.from('line_messages').insert({ line_user_id: lineUserId, role: 'assistant', content: ACCOUNT_DONE_TEXTS.join('\n') });
   }
-  return NextResponse.json({ ok: true, first });
+  return NextResponse.json({ ok: true, first, email: user.email });
 }

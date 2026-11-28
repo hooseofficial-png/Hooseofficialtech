@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
-import { getProfile, lineConfigured, reply, splitReply, startLoading, text, verifySignature, type LineMessage } from '@/lib/line';
-import { DONE_TEXTS, nextStepCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
+import { getProfile, lineConfigured, reply, signLink, splitReply, startLoading, text, verifySignature, type LineMessage } from '@/lib/line';
+import { DONE_TEXTS, nextStepCard, resultCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
 import { claimProject } from '@/lib/editing-engine';
 import { answer, SORRY, type LineUser } from '@/lib/line-agent';
 
@@ -31,6 +31,7 @@ const USER_COLS = 'line_user_id, display_name, full_name, role, status, position
 const APPLY = /^(สมัคร|ใบสมัคร|apply|liff|ฟอร์ม|ฟอร์มสมัคร)$/i;
 const STATUS = /^(สถานะ|สถานะของฉัน|สถานะงาน|status|เช็กสถานะ|เช็คสถานะ)$/i;
 const URL_RE = /https?:\/\/[^\s]+/i;
+const FORM_DONE = /^(เสร็จสิ้น|เสร็จแล้ว|กรอกเสร็จแล้ว|กรอกแล้ว|ส่งฟอร์มแล้ว|done)\s*(ค่ะ|ครับ|คะ|นะคะ)?[!！.]*$/i;
 const DONE_WORD = /^(เรียบร้อย|เรียบร้อยแล้ว|ส่งครบแล้ว|ครบแล้ว|เสร็จแล้ว|done)\s*(ค่ะ|ครับ|คะ|นะคะ)?[!！.]*$/i;
 const QUESTION = /[?？]|ไหม|มั้ย|อะไร|ยังไง|อย่างไร|เท่าไหร่|เท่าไร|ทำไม|เมื่อไหร่|กี่/;
 
@@ -103,6 +104,17 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       const c = (calls || []).find(x => !(x.exclude_line_user_id || '').split(',').includes(userId));
       if (c) { await claimEditing(db, u, c.id, ev.replyToken); return; }
       await reply(ev.replyToken, [text('ตอนนี้ยังไม่มีงานที่เปิดรับอยู่ค่ะ 🙏 มีงานใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ก่อนเลยนะคะ')]);
+      return;
+    }
+
+    // Onboarding: documents read + data form sent → "เสร็จสิ้น" → create a HOOSE account.
+    if (u.status === 'onboarding' && FORM_DONE.test(msg)) {
+      const now = new Date().toISOString();
+      await db.from('line_users').update({ status: 'approved', status_changed_at: now }).eq('line_user_id', userId);
+      const name = u.full_name || u.display_name || '';
+      const c = resultCard('approved', u.role, `ได้รับข้อมูลครบแล้วค่ะคุณ${name} 🙌`, '', signLink(userId))!;
+      await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg }, { line_user_id: userId, role: 'assistant', content: '[สร้างบัญชี HOOSE] ส่งลิงก์สร้างบัญชีแล้ว' }]);
+      await reply(ev.replyToken, [c]);
       return;
     }
 

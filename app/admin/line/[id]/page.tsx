@@ -8,7 +8,7 @@ import { SURVEY_LABEL } from '@/lib/line-cards';
 
 type U = Record<string, string | number | boolean | null | object> & { line_user_id: string; status: string; note: string; memory: string; needs_attention: boolean; attention_note: string };
 type M = { id: number; role: 'user' | 'assistant'; content: string; created_at: string };
-const ACTIONS = ['interview', 'approved', 'rejected', 'active'];
+const ACTIONS = ['interview', 'onboarding', 'approved', 'rejected', 'active'];
 
 export default function LineApplicant({ params }: { params: { id: string } }) {
   const [u, setU] = useState<U | null>(null); const [msgs, setMsgs] = useState<M[]>([]);
@@ -95,7 +95,7 @@ export default function LineApplicant({ params }: { params: { id: string } }) {
         {pick && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {NOTIFY[pick] && <>
-              {pick === 'interview' && <label className="f">ลิงก์นัดสัมภาษณ์ (Calendly / Google Calendar / Meet)<input className="in-t" placeholder="https://" value={iv} onChange={e => setIv(e.target.value)} /></label>}
+              {pick === 'interview' && <label className="f">ลิงก์นัดคุย (เว้นว่าง = Calendly ของ HOOSE)<input className="in-t" placeholder="https://" value={iv} onChange={e => setIv(e.target.value)} /></label>}
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={send} onChange={e => setSend(e.target.checked)} />ส่งการ์ดแจ้งทาง LINE (นับโควตา push 1 ข้อความ)</label>
               {send && <textarea className="in-t" style={{ height: 96, padding: 10 }} value={notify} onChange={e => setNotify(e.target.value)} />}
             </>}
