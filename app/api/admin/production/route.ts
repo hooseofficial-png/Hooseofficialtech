@@ -9,16 +9,19 @@ export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   const db = sbAdmin();
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
-  const [{ data: projects }, { data: crew }, { data: events }] = await Promise.all([
+  const [{ data: projects }, { data: crew }, { data: events }, { data: owners }] = await Promise.all([
     db.from('projects').select('id, name, brand, type, pm_name, start_date, end_date, party_code, created_at').order('start_date', { ascending: false, nullsFirst: false }).limit(200),
     db.from('crew_positions').select('project_id, status'),
-    db.from('events').select('project_id, type, date, time, title').gte('date', today).order('date')
+    db.from('events').select('project_id, type, date, time, title').gte('date', today).order('date'),
+    db.from('project_members').select('project_id, profiles(full_name, email)').eq('role', 'owner')
   ]);
+  const ownerOf = new Map((owners || []).map(o => [o.project_id, o.profiles as unknown as { full_name: string; email: string } | null]));
   const rows = (projects || []).map(p => {
     const c = (crew || []).filter(x => x.project_id === p.id);
     const next = (events || []).find(e => e.project_id === p.id) || null;
     const phase = p.end_date && p.end_date < today ? 'done' : p.start_date && p.start_date <= today ? 'shooting' : 'pre';
-    return { ...p, phase, crew: { total: c.length, open: c.filter(x => x.status === 'open').length, pending: c.filter(x => x.status === 'pending').length, confirmed: c.filter(x => x.status === 'confirmed').length }, next };
+    const o = ownerOf.get(p.id);
+    return { ...p, owner: o ? (o.full_name || o.email) : '', owner_email: o?.email || '', phase, crew: { total: c.length, open: c.filter(x => x.status === 'open').length, pending: c.filter(x => x.status === 'pending').length, confirmed: c.filter(x => x.status === 'confirmed').length }, next };
   });
   return NextResponse.json({ projects: rows });
 }

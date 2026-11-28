@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import AdminShell, { Grid, Tile } from '@/components/admin/AdminShell';
 import OpenCalls from '@/components/admin/OpenCalls';
 
-type Pj = { id: string; name: string; brand: string; type: string; pm_name: string; start_date: string | null; end_date: string | null; party_code: string | null;
+type Pj = { id: string; owner: string; owner_email: string; name: string; brand: string; type: string; pm_name: string; start_date: string | null; end_date: string | null; party_code: string | null;
   phase: 'pre' | 'shooting' | 'done'; crew: { total: number; open: number; pending: number; confirmed: number }; next: { type: string; date: string; time: string | null; title: string } | null };
 const PHASE: Record<string, string> = { pre: 'เตรียมงาน', shooting: 'กำลังถ่าย', done: 'จบแล้ว' };
 const d = (s: string | null) => s ? new Date(s + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '–';
@@ -34,12 +34,13 @@ export default function Production() {
             <button className={phase === 'all' ? 'on' : ''} onClick={() => setPhase('all')}>ทั้งหมด</button>
           </div>
           <section className="card" style={{ padding: 0 }}><div className="tblw"><table className="tbl">
-            <thead><tr><th>โปรเจกต์</th><th>ช่วง</th><th>วันถ่าย</th><th>ทีมงาน</th><th>ถัดไป</th><th>Party Code</th></tr></thead>
+            <thead><tr><th>โปรเจกต์</th><th>เจ้าของ</th><th>ช่วง</th><th>วันถ่าย</th><th>ทีมงาน</th><th>ถัดไป</th><th>Party Code</th></tr></thead>
             <tbody>{rows.map(x => {
               const fill = x.crew.total ? Math.round(x.crew.confirmed / x.crew.total * 100) : 0;
               return (
                 <tr key={x.id}>
                   <td><Link href={`/p/${x.id}`} style={{ fontWeight: 600, color: 'var(--blue)' }}>{x.name || 'ไม่มีชื่อ'}</Link><div className="mut" style={{ fontSize: 12 }}>{[x.brand, x.type, x.pm_name && 'PM ' + x.pm_name].filter(Boolean).join(' · ')}</div></td>
+                  <td style={{ fontSize: 13 }}>{x.owner || <span className="mut">–</span>}{x.owner_email && x.owner !== x.owner_email && <div className="mut" style={{ fontSize: 11 }}>{x.owner_email}</div>}</td>
                   <td><span className={x.phase === 'shooting' ? 'chip b' : x.phase === 'pre' ? 'chip lb' : 'chip o'}>{PHASE[x.phase]}</span></td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(x.start_date)}{x.end_date && x.end_date !== x.start_date ? ' – ' + d(x.end_date) : ''}</td>
                   <td style={{ minWidth: 120 }}>

@@ -17,7 +17,11 @@ export default function LineAdmin() {
     if (r.status === 403 || r.status === 401) { setDenied(true); return; }
     setUsers((await r.json()).users || []);
   });
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const f = new URLSearchParams(window.location.search).get('f');
+    if (f === 'attention') { setMode('all'); setStatus('attention'); }
+  }, []);
   const byRole = useMemo(() => (users || []).filter(u => role === 'all' || (role === 'none' ? !u.role : u.role === role)), [users, role]);
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();

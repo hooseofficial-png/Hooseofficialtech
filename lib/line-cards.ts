@@ -226,21 +226,22 @@ export function projectBrief(p: OcProject & { synopsis?: string | null; delivera
 const thDay = (ms: number | null) => ms ? new Date(ms).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ยังไม่กำหนด';
 const daysLeft = (ms: number | null) => ms ? Math.ceil((ms - Date.now()) / 864e5) : null;
 
-export type ProjectCall = { id: string; task_name: string; due_date: string | null; detail: string; rate: string; clips: number; reason: string; refs: string[] };
+export type ProjectCall = { id: string; task_name: string; due_date: string | null; detail: string; rate: string; clips: number; reason: string; refs: string[]; left?: string[] };
 
 /** New (or re-opened) editing project for editors. First to tap "รับโปรเจกต์นี้" gets every open clip in ClickUp. */
 export function projectCallCard(c: ProjectCall): LineMessage {
   const due = c.due_date ? +new Date(c.due_date) : null;
   const late = due !== null && due < Date.now();
-  const btns: Btn[] = [{ label: '✋ รับโปรเจกต์นี้', data: `action=ed&c=${c.id}`, display: 'รับโปรเจกต์นี้ค่ะ/ครับ', primary: true }];
+  const btns: Btn[] = [{ label: '✋ รับงานนี้', data: `action=ed&c=${c.id}`, display: 'รับงานนี้ค่ะ/ครับ', primary: true }];
   c.refs.slice(0, 2).forEach((u, i) => btns.push({ label: `▶ ดู REF ${c.refs.length > 1 ? i + 1 : ''}`.trim(), uri: u }));
-  return card(`${c.reason === 'reassign' ? 'ด่วน · หาคนตัดแทน' : 'โปรเจกต์ใหม่'} · ${c.task_name}`,
-    `${c.reason === 'reassign' ? 'ด่วน! หาคนตัดแทน' : 'โปรเจกต์ใหม่มาแล้ว'} ✂️ ${c.task_name}`, [
-      c.clips > 1 ? `🎬 ${c.clips} คลิป` : '🎬 1 งาน',
+  const left = (c.left || []).map(n => n.replace(/[:：\s]+$/, '')).filter(Boolean);
+  return card(`Open Call · ${c.task_name} · ${c.clips} คลิป`,
+    `Open Call ✂️ ${c.task_name}`, [
+      `🎬 หานักตัดต่อ ${c.clips} คลิป${left.length && left.length <= 8 ? ': ' + left.join(', ') : ''}`,
       late ? '⏰ เลยกำหนดเดิมแล้ว ทีมงานจะแจ้งกำหนดส่งใหม่กับคนที่รับ' : `⏰ Deadline: ${thDay(due)}`,
       c.rate ? '💰 ' + c.rate : '',
       c.detail ? '📝 ' + c.detail.slice(0, 280) + (c.detail.length > 280 ? '…' : '') : '',
-      'คนแรกที่กดรับ ได้โปรเจกต์นี้ค่ะ'
+      'คนแรกที่กดรับ ได้งานชุดนี้ค่ะ'
     ].filter(Boolean), btns, 'HOOSE · งานตัดต่อ');
 }
 

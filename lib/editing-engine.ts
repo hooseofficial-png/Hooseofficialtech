@@ -35,11 +35,11 @@ export async function announceProject(db: SupabaseClient, p: Project, o: { detai
   const { data: call, error } = await db.from('editing_calls').insert({
     clickup_task_id: p.id, task_name: p.name, parent_name: '', due_date: p.due ? new Date(p.due).toISOString() : null,
     detail: detail.slice(0, 600), rate: (o.rate || '').slice(0, 80), sent_to: to.length, created_by: o.createdBy || null,
-    reason: o.reason || 'new', exclude_line_user_id: Array.from(exclude).join(',') || null, clips: Math.max(1, p.clips.length)
+    reason: o.reason || 'new', exclude_line_user_id: Array.from(exclude).join(',') || null, clips: Math.max(1, p.open.length)
   }).select('id, task_name, due_date, detail, rate, clips, reason').single();
   if (error) return { error: error.message };
   try {
-    const msg = projectCallCard({ ...call, refs: refLinks(description) });
+    const msg = projectCallCard({ ...call, refs: refLinks(description), left: p.clips.length ? p.open.map(t => t.name) : [] });
     for (let i = 0; i < to.length; i += 500) await multicast(to.slice(i, i + 500), [msg]);
   } catch (e) {
     await db.from('editing_calls').update({ status: 'cancelled' }).eq('id', call.id);
