@@ -264,8 +264,8 @@ function Work({ liff, back }: { liff: Liff; back: React.ReactNode }) {
   if (!w) return <div className="card"><span className="mut">กำลังโหลดงาน…</span></div>;
   if (!w.linked) return (
     <div className="card" style={{ gap: 8 }}>
-      <b>{w.reason === 'not_member' ? 'หน้านี้สำหรับทีมตัดต่อ HOOSE ✂️' : 'ยังไม่เห็นงานใน ClickUp ของคุณ'}</b>
-      <span className="mut">{w.reason === 'not_member' ? 'เมื่อผ่านการคัดเลือกแล้ว งานและกำหนดส่งจะขึ้นที่นี่ค่ะ' : 'ทีมงานกำลังผูกบัญชี ClickUp ให้ ถ้ารอนานพิมพ์บอกน้องฮูสในแชทได้เลยค่ะ'}</span>{back}
+      <b>{w.reason === 'not_member' ? 'หน้านี้สำหรับทีมตัดต่อ HOOSE ✂️' : 'คุณยังไม่มีงานอัพเดทใหม่ในตอนนี้'}</b>
+      <span className="mut">{w.reason === 'not_member' ? 'เมื่อผ่านการคัดเลือกแล้ว งานและกำหนดส่งจะขึ้นที่นี่ค่ะ' : 'รอการอัพเดทจากทีม HOOSE นะคะ มีงานใหม่เมื่อไหร่ น้องฮูสจะแจ้งในแชททันทีค่ะ 💙'}</span>{back}
     </div>);
   const s = w.stats!;
   const due = (t: WTask) => {
