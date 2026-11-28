@@ -89,10 +89,11 @@ export function verifyLink(token: string): string | null {
   return want.length === mac.length && timingSafeEqual(Buffer.from(want), Buffer.from(mac)) && /^U[0-9a-f]{32}$/.test(id) ? id : null;
 }
 
-/** Splits a long chat reply into at most 2 bubbles, preferably after a sentence end, so nothing reads like a wall of text. */
-export function splitReply(t: string, max = 160): string[] {
+/** Splits a reply into at most 2 bubbles when it runs past ~6 sentences or ~260 characters, cutting at a sentence end. */
+export function splitReply(t: string, max = 260): string[] {
   const s = (t || '').trim();
-  if (s.length <= max) return [s];
+  const sentences = s.split(/(?<=[.!?…]|ค่ะ|ครับ|นะคะ|\p{Extended_Pictographic})\s+/u).filter(Boolean);
+  if (s.length <= max && sentences.length <= 6) return [s];
   const mid = s.length / 2;
   const pick = (re: RegExp) => {
     const cuts = Array.from(s.matchAll(re)).map(m => m.index! + m[0].length).filter(i => i > 25 && i < s.length - 25);

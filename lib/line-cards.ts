@@ -90,7 +90,7 @@ export function welcomeCard(name?: string): LineMessage {
 
 export function nextStepCard(role: string): LineMessage {
   if (role === 'editor') return card('สมัครนักตัดต่อ · กรอกใบสมัคร', 'มาเริ่มสมัครนักตัดต่อกันเลย ✨',
-    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② จากนั้นเลือกผลงานที่คุณคิดว่าดีที่สุด 1 ชิ้น แล้วส่งลิงก์มาในแชทนี้ได้เลยค่ะ 🎬'],
+    ['① กดกรอกใบสมัครด้านล่าง (ใช้เวลาไม่กี่นาที)', '② ส่งลิงก์ผลงานที่ดีที่สุดมาในแชทนี้ แล้วพิมพ์ "เรียบร้อย" ค่ะ 🎬'],
     [{ label: '📝 กรอกใบสมัคร', uri: EDITOR_APPLY_FORM, primary: true }]);
   if (role === 'crew') return { type: 'text', text: 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊' };
   return card('PM / Producer · เปิดแอป HOOSE', 'สำหรับ PM / Producer 📁',
