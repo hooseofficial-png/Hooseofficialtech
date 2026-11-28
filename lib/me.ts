@@ -26,3 +26,13 @@ export const cachedMe = () => getCache<Me>('me');
 export async function signOut() { clearCache(); inflight = null; await sb().auth.signOut(); window.location.href = '/login'; }
 /** The signed-in auth user from the local session (no network). */
 export async function currentUser() { return (await sb().auth.getSession()).data.session?.user ?? null; }
+
+let editorFlight: Promise<boolean> | null = null;
+/** True for approved editors (from the LINE application): they get /editor and cannot create projects. */
+export function isEditor(): Promise<boolean> {
+  if (!editorFlight) editorFlight = (async () => {
+    const { data, error } = await sb().rpc('is_editor_account');
+    return !error && data === true;
+  })();
+  return editorFlight;
+}
