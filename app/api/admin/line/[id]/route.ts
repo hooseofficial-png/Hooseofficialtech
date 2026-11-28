@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { requireAdmin, STATUSES } from '@/lib/admin';
 import { push, signLink, text } from '@/lib/line';
-import { resultCard, withQuickMenu } from '@/lib/line-cards';
+import { MEETING_URL, resultCard, withQuickMenu } from '@/lib/line-cards';
+import { docLinks } from '@/lib/line-docs';
 
 // Admin · one applicant: profile + chat history (GET), change status / note and optionally message them on LINE (PATCH).
 export const dynamic = 'force-dynamic';
@@ -33,7 +34,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (url && !/^https:\/\/\S+$/.test(url)) return NextResponse.json({ error: 'ลิงก์สัมภาษณ์ต้องขึ้นต้นด้วย https://' }, { status: 400 });
     patch.interview_url = url.slice(0, 500);
   }
-  if (b.status === 'interview' && !patch.interview_url) return NextResponse.json({ error: 'ใส่ลิงก์นัดสัมภาษณ์ก่อน' }, { status: 400 });
+  if (b.status === 'interview' && !patch.interview_url) patch.interview_url = MEETING_URL;
   if (b.clickup_user_id !== undefined) patch.clickup_user_id = b.clickup_user_id ? Number(b.clickup_user_id) : null;
   if (b.resolve) { patch.needs_attention = false; patch.attention_note = ''; }
   const db = sbAdmin();
@@ -46,7 +47,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (msg) {
     try {
       const { data: u } = await db.from('line_users').select('role, status, survey_done_at, interview_url').eq('line_user_id', params.id).single();
-      const cardMsg = b.status ? resultCard(b.status, u?.role ?? null, msg, u?.interview_url || '', signLink(params.id)) : null;
+      const docs = b.status === 'onboarding' ? await docLinks(db, u?.role ?? null) : [];
+      const cardMsg = b.status ? resultCard(b.status, u?.role ?? null, msg, u?.interview_url || '', signLink(params.id), docs) : null;
       await push(params.id, [withQuickMenu(cardMsg || text(msg), { role: u?.role ?? null, status: u?.status || '', survey_done_at: u?.survey_done_at })]); sent = true;
       await db.from('line_messages').insert({ line_user_id: params.id, role: 'assistant', content: `[แอดมิน] ${msg}` });
     } catch (e) { sendError = (e as Error).message; }

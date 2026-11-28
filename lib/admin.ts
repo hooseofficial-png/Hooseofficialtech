@@ -8,4 +8,4 @@ export async function requireAdmin(): Promise<string | null> {
   return data ? user.id : null;
 }
 
-export const STATUSES = ['new', 'applying', 'applied', 'interview', 'approved', 'rejected', 'active', 'blocked'] as const;
+export const STATUSES = ['new', 'applying', 'applied', 'interview', 'onboarding', 'approved', 'rejected', 'active', 'blocked'] as const;

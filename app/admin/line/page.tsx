@@ -33,7 +33,7 @@ export default function LineAdmin() {
   return (
     <AdminShell title="รับสมัคร · LINE OA" denied={denied} sub={<span className="mut" style={{ fontSize: 13 }}>{users ? `${users.length} คนใน LINE OA` : ''}</span>}>
       <div className="seg" role="tablist" style={{ alignSelf: 'flex-start' }}>
-        <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>ตรวจผลงาน ({(users || []).filter(u => u.status === 'applied').length})</button>
+        <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>Pipeline ({(users || []).filter(u => ['applied', 'interview', 'onboarding', 'approved'].includes(u.status)).length})</button>
         <button className={mode === 'overview' ? 'on' : ''} onClick={() => setMode('overview')}>สรุปรับสมัคร</button>
         <button className={mode === 'team' ? 'on' : ''} onClick={() => setMode('team')}>ทีมงาน</button>
         <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>ทั้งหมด</button>
@@ -86,42 +86,108 @@ export default function LineAdmin() {
   );
 }
 
-/** Review queue: applicants waiting for a decision. Only the portfolio and two buttons. */
+/** Recruiting pipeline: portfolio → meeting → documents + form → HOOSE account → team. One tap moves a person and sends the LINE card. */
+const STAGES = [
+  { key: 'applied',    title: 'ตรวจผลงาน',        hint: 'ดูผลงานแล้วกดผ่าน' },
+  { key: 'interview',  title: 'นัดคุย',            hint: 'ส่งลิงก์ Calendly แล้ว' },
+  { key: 'onboarding', title: 'เอกสาร + ฟอร์ม',    hint: 'รอพิมพ์ “เสร็จสิ้น”' },
+  { key: 'approved',   title: 'สร้างบัญชี HOOSE',  hint: 'ส่งลิงก์สร้างบัญชีแล้ว' },
+  { key: 'active',     title: 'ทีมงาน',            hint: 'เชื่อมบัญชีแล้ว' }
+] as const;
+
 function Review({ users, reload }: { users: U[] | null; reload: () => void }) {
   const [busy, setBusy] = useState('');
-  const queue = (users || []).filter(u => u.status === 'applied').sort((a, b) => (a.applied_at || '').localeCompare(b.applied_at || ''));
-  async function decide(u: U, status: 'approved' | 'rejected') {
+  async function move(u: U, status: string, label: string) {
     const name = u.full_name || u.display_name || 'ผู้สมัคร';
-    if (!confirm(`${status === 'approved' ? 'ยืนยัน' : 'ปฏิเสธ'}: ${name}\nจะแจ้งผลทาง LINE ทันที`)) return;
     setBusy(u.line_user_id);
     const r = await fetch(`/api/admin/line/${u.line_user_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, notify: NOTIFY[status](name, u.role) }) });
     const j = await r.json().catch(() => ({})); setBusy('');
-    toast(!r.ok ? (j.error || 'ไม่สำเร็จ') : j.sendError ? 'บันทึกแล้ว แต่ส่ง LINE ไม่สำเร็จ' : `${status === 'approved' ? 'ยืนยัน' : 'ปฏิเสธ'} ${name} · แจ้งทาง LINE แล้ว`);
+    toast(!r.ok ? (j.error || 'ไม่สำเร็จ') : j.sendError ? 'ย้ายแล้ว แต่ส่ง LINE ไม่สำเร็จ' : `${label} · ส่งการ์ดให้ ${name} ใน LINE แล้ว`);
     reload();
   }
   if (!users) return <div className="empty">กำลังโหลด…</div>;
-  if (!queue.length) return <div className="empty">ไม่มีผลงานรอตรวจ 🎉</div>;
-  return <>{queue.map(u => {
-    const name = u.full_name || u.display_name || 'ไม่ทราบชื่อ';
-    return (
-      <section key={u.line_user_id} className="card" style={{ gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
-          {u.picture_url ? <img src={u.picture_url} alt="" className="av" style={{ objectFit: 'cover' }} /> : <span className="av">{name[0]}</span>}
-          <div style={{ minWidth: 0 }}>
-            <Link href={`/admin/line/${u.line_user_id}`} className="ell" style={{ fontWeight: 700, color: 'var(--ink)', display: 'block' }}>{name}</Link>
-            <span className="mut" style={{ fontSize: 12 }}>{u.role ? ROLE_TH[u.role] : '–'}{u.position ? ' · ' + u.position : ''} · ส่ง {fmt(u.applied_at)}</span>
-          </div>
+  const since = (u: U) => { const t = u.status === 'applied' ? u.applied_at : u.status_changed_at; return t ? fmt(t) : ''; };
+  const actions = (u: U) => {
+    const b = !!busy;
+    switch (u.status) {
+      case 'applied': return <><button className="btn p sm" disabled={b} onClick={() => move(u, 'interview', 'ผ่าน → นัดคุย')}>✓ ผ่าน · นัดคุย</button><button className="btn sm ghost" disabled={b} onClick={() => confirm('ปฏิเสธและแจ้งทาง LINE?') && move(u, 'rejected', 'ปฏิเสธ')}>ปฏิเสธ</button></>;
+      case 'interview': return <><button className="btn p sm" disabled={b} onClick={() => move(u, 'onboarding', 'ส่งเอกสาร + ฟอร์ม')}>คุยเสร็จ · ส่งเอกสาร</button><button className="btn sm ghost" disabled={b} onClick={() => confirm('ไม่ผ่านและแจ้งทาง LINE?') && move(u, 'rejected', 'ไม่ผ่าน')}>ไม่ผ่าน</button></>;
+      case 'onboarding': return <button className="btn sm ghost" disabled={b} onClick={() => move(u, 'onboarding', 'ส่งเอกสารซ้ำ')}>ส่งเอกสารซ้ำ</button>;
+      case 'approved': return <button className="btn sm ghost" disabled={b} onClick={() => move(u, 'approved', 'ส่งลิงก์ซ้ำ')}>ส่งลิงก์สร้างบัญชีซ้ำ</button>;
+      default: return null;
+    }
+  };
+  return <>
+    <Docs />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(220px, 1fr))', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
+      {STAGES.map(st => {
+        const list = users.filter(u => u.status === st.key && (u.role === 'editor' || u.role === 'crew'))
+          .sort((a, b) => (a.status_changed_at || a.applied_at || '').localeCompare(b.status_changed_at || b.applied_at || ''));
+        return (
+          <section key={st.key} style={{ background: 'var(--soft)', borderRadius: 14, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 160 }}>
+            <div style={{ padding: '2px 4px' }}>
+              <div className="between"><b style={{ fontSize: 14 }}>{st.title}</b><span className="chip">{list.length}</span></div>
+              <span className="mut" style={{ fontSize: 11 }}>{st.hint}</span>
+            </div>
+            {list.length === 0 ? <span className="mut" style={{ fontSize: 12, padding: '6px 4px' }}>ว่าง</span> : list.map(u => {
+              const name = u.full_name || u.display_name || 'ไม่ทราบชื่อ';
+              return (
+                <article key={u.line_user_id} className="card" style={{ padding: 12, gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                    {u.picture_url ? <img src={u.picture_url} alt="" className="av" style={{ objectFit: 'cover', width: 28, height: 28 }} /> : <span className="av" style={{ width: 28, height: 28 }}>{name[0]}</span>}
+                    <div style={{ minWidth: 0 }}>
+                      <Link href={`/admin/line/${u.line_user_id}`} className="ell" style={{ fontWeight: 700, color: 'var(--ink)', display: 'block', fontSize: 14 }}>{name}</Link>
+                      <span className="mut" style={{ fontSize: 11 }}>{u.role ? ROLE_TH[u.role] : ''}{u.position ? ' · ' + u.position : ''}</span>
+                    </div>
+                  </div>
+                  {u.portfolio_url && st.key === 'applied' && <a href={u.portfolio_url} target="_blank" rel="noreferrer" className="ell" style={{ color: 'var(--blue)', fontWeight: 600, fontSize: 12 }}>▶ ดูผลงาน</a>}
+                  <span className="mut" style={{ fontSize: 11 }}>เข้าขั้นนี้ {since(u)}</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{actions(u)}</div>
+                </article>);
+            })}
+          </section>);
+      })}
+    </div>
+  </>;
+}
+
+/** PDFs sent with the "คุยเสร็จ · ส่งเอกสาร" step. */
+function Docs() {
+  const [docs, setDocs] = useState<{ id: string; name: string; audience: string; active: boolean }[] | null>(null);
+  const [aud, setAud] = useState('all'); const [busy, setBusy] = useState(false);
+  const load = () => fetch('/api/admin/docs').then(r => r.json()).then(j => setDocs(j.docs || []));
+  useEffect(() => { load(); }, []);
+  async function upload(f: File | undefined) {
+    if (!f) return; setBusy(true);
+    const fd = new FormData(); fd.append('file', f); fd.append('audience', aud);
+    const r = await fetch('/api/admin/docs', { method: 'POST', body: fd }); const j = await r.json().catch(() => ({})); setBusy(false);
+    toast(r.ok ? 'อัปโหลดแล้ว' : (j.error || 'อัปโหลดไม่สำเร็จ')); load();
+  }
+  const patch = async (body: Record<string, unknown>) => { await fetch('/api/admin/docs', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); load(); };
+  const AUD: Record<string, string> = { all: 'ทุกคน', editor: 'นักตัดต่อ', crew: 'ทีมโปรดักชัน' };
+  return (
+    <section className="card" style={{ gap: 10, padding: '14px 16px' }}>
+      <div className="between" style={{ gap: 10, flexWrap: 'wrap' }}>
+        <div><b style={{ fontSize: 14 }}>เอกสารที่ส่งตอน “คุยเสร็จ · ส่งเอกสาร”</b><div className="mut" style={{ fontSize: 12 }}>PDF (ไม่เกิน 4 MB) ส่งเป็นปุ่มเปิดไฟล์ในการ์ด LINE พร้อมแบบฟอร์มข้อมูล · ลิงก์ใช้ได้ 60 วัน</div></div>
+        <div className="row" style={{ gap: 6 }}>
+          <select className="in-t" style={{ width: 140 }} value={aud} onChange={e => setAud(e.target.value)} aria-label="ส่งให้ใคร">{Object.entries(AUD).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <label className="btn sm p" style={{ cursor: 'pointer' }}>{busy ? 'กำลังอัปโหลด…' : '+ อัปโหลด PDF'}<input type="file" accept="application/pdf" hidden onChange={e => upload(e.target.files?.[0])} /></label>
         </div>
-        {u.portfolio_url
-          ? <a href={u.portfolio_url} target="_blank" rel="noreferrer" className="ell" style={{ color: 'var(--blue)', fontWeight: 600 }}>▶ {u.portfolio_url}</a>
-          : <span className="mut">ยังไม่มีลิงก์ผลงาน</span>}
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn p sm" disabled={!!busy} onClick={() => decide(u, 'approved')}>✓ ยืนยัน</button>
-          <button className="btn sm ghost" disabled={!!busy} onClick={() => decide(u, 'rejected')}>ปฏิเสธ</button>
-        </div>
-      </section>);
-  })}</>;
+      </div>
+      {docs && docs.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {docs.map(d => (
+          <div key={d.id} className="between" style={{ gap: 8, fontSize: 13 }}>
+            <span className="ell" style={{ opacity: d.active ? 1 : .5 }}>📄 {d.name} <span className="mut">· {AUD[d.audience]}</span></span>
+            <span className="row" style={{ gap: 6 }}>
+              <button className="btn sm ghost" onClick={() => patch({ id: d.id, active: !d.active })}>{d.active ? 'ปิดใช้' : 'เปิดใช้'}</button>
+              <button className="btn sm ghost" onClick={() => confirm('ลบเอกสารนี้?') && patch({ id: d.id, remove: true })}>ลบ</button>
+            </span>
+          </div>))}
+      </div>}
+      {docs && !docs.length && <span className="mut" style={{ fontSize: 12 }}>ยังไม่มีเอกสาร · ถ้าไม่อัปโหลด การ์ดจะส่งเฉพาะแบบฟอร์มข้อมูล</span>}
+    </section>
+  );
 }
 
 const DAY = 86400000;
