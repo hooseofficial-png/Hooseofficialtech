@@ -22,10 +22,10 @@ export type CuTask = {
   id: string; name: string; url: string; parent: string | null; parent_name: string;
   status: string; status_type: string; // open | custom | done | closed
   assignees: CuUser[]; due_date: number | null; date_created: number; date_done: number | null; date_updated: number;
-  list: string;
+  list: string; description: string;
 };
 
-type Raw = { id: string; name: string; url: string; parent: string | null; status: { status: string; type: string };
+type Raw = { id: string; name: string; url: string; parent: string | null; status: { status: string; type: string }; text_content?: string; description?: string;
   assignees: CuUser[]; due_date: string | null; date_created: string; date_done: string | null; date_closed: string | null; date_updated: string; list: { name: string } };
 
 /** All tasks (incl. subtasks and closed) of the editing lists. Parent names filled in for subtasks. */
@@ -44,7 +44,7 @@ export async function editingTasks(): Promise<CuTask[]> {
     status: (t.status?.status || '').trim(), status_type: t.status?.type || 'open',
     assignees: (t.assignees || []).map(a => ({ id: a.id, username: a.username, email: a.email, profilePicture: a.profilePicture })),
     due_date: t.due_date ? Number(t.due_date) : null, date_created: Number(t.date_created), date_done: t.date_done || t.date_closed ? Number(t.date_done || t.date_closed) : null,
-    date_updated: Number(t.date_updated), list: t.list?.name || ''
+    date_updated: Number(t.date_updated), list: t.list?.name || '', description: (t.text_content || t.description || '').trim()
   }));
 }
 
@@ -61,6 +61,30 @@ export async function members(): Promise<CuUser[]> {
 
 export async function addAssignee(taskId: string, userId: number) {
   return cu(`/task/${encodeURIComponent(taskId)}`, { method: 'PUT', body: JSON.stringify({ assignees: { add: [userId], rem: [] } }) });
+}
+
+export async function removeAssignees(taskId: string, userIds: number[]) {
+  if (!userIds.length) return;
+  return cu(`/task/${encodeURIComponent(taskId)}`, { method: 'PUT', body: JSON.stringify({ assignees: { add: [], rem: userIds } }) });
+}
+
+/** Workspace (team) id of the token's first workspace. */
+export async function teamId(): Promise<string> {
+  const j = await cu('/team');
+  return String((j.teams || [])[0]?.id || '');
+}
+
+export const WEBHOOK_EVENTS = ['taskCreated', 'taskUpdated', 'taskStatusUpdated', 'taskAssigneeUpdated', 'taskDueDateUpdated', 'taskMoved'];
+
+/** Registers a webhook on the editing list; returns its id and signing secret. */
+export async function createWebhook(endpoint: string, listId: string) {
+  const team = await teamId();
+  const j = await cu(`/team/${team}/webhook`, { method: 'POST', body: JSON.stringify({ endpoint, events: WEBHOOK_EVENTS, list_id: Number(listId) }) });
+  return { id: String(j.id || j.webhook?.id || ''), secret: String(j.webhook?.secret || j.secret || '') };
+}
+
+export async function deleteWebhook(id: string) {
+  return cu(`/webhook/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 /** Status buckets used across the dashboard and reminders. */
