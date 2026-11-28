@@ -31,6 +31,7 @@ const USER_COLS = 'line_user_id, display_name, full_name, role, status, position
 const APPLY = /^(สมัคร|ใบสมัคร|apply|liff|ฟอร์ม|ฟอร์มสมัคร)$/i;
 const STATUS = /^(สถานะ|สถานะของฉัน|สถานะงาน|status|เช็กสถานะ|เช็คสถานะ)$/i;
 const URL_RE = /https?:\/\/[^\s]+/i;
+const DONE_WORD = /^(เรียบร้อย|เรียบร้อยแล้ว|ส่งครบแล้ว|ครบแล้ว|เสร็จแล้ว|done)\s*(ค่ะ|ครับ|คะ|นะคะ)?[!！.]*$/i;
 const QUESTION = /[?？]|ไหม|มั้ย|อะไร|ยังไง|อย่างไร|เท่าไหร่|เท่าไร|ทำไม|เมื่อไหร่|กี่/;
 
 export async function POST(req: Request) {
@@ -130,15 +131,15 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
   }
 }
 
-const BEST_WORK_CREW = 'ขอดูผลงานในกองถ่ายที่คุณชอบที่สุด 1 ชิ้นค่ะ 🎬 ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ถ้าเล่าสั้น ๆ ด้วยว่าทำหน้าที่อะไรในงานนั้น จะยิ่งดีเลยค่ะ';
-const BEST_WORK_EDITOR = 'ขอดูผลงานที่คุณคิดว่าตัดออกมาดีที่สุด 1 ชิ้นค่ะ ✨ ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio)';
+const BEST_WORK_CREW = 'ขอดูผลงานในกองถ่ายที่คุณชอบที่สุดค่ะ 🎬 ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ส่งครบแล้วพิมพ์ "เรียบร้อย" นะคะ';
+const BEST_WORK_EDITOR = 'ขอดูผลงานที่คุณคิดว่าตัดออกมาดีที่สุดค่ะ ✨ ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ส่งครบแล้วพิมพ์ "เรียบร้อย" นะคะ';
 
 /** What to ask a crew applicant next (never asks again for something already given). */
 function crewPrompt(u: LineUser) {
   if (!u.full_name) return 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊';
   if (!u.position) return `ยินดีที่ได้รู้จักค่ะคุณ${u.full_name} 😊 ปกติคุณทำตำแหน่งอะไรในกองถ่ายคะ? (เช่น Camera Assistant, Gaffer, Art, PA)`;
   if (!u.portfolio_url) return BEST_WORK_CREW;
-  return DONE_TEXTS.join('\n');
+  return 'ได้รับลิงก์แล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เรียบร้อย" ได้เลยนะคะ';
 }
 
 /**
@@ -147,20 +148,31 @@ function crewPrompt(u: LineUser) {
  */
 async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string): Promise<string[] | null> {
   if (!['editor', 'crew'].includes(u.role || '') || !['new', 'applying'].includes(u.status)) return null;
+  const ready = (x: LineUser) => !!x.portfolio_url && (u.role === 'editor' || (!!x.full_name && !!x.position));
+
+  // "เรียบร้อย": the applicant says they have sent everything.
+  if (DONE_WORD.test(msg)) {
+    if (!ready(u)) return [u.role === 'crew' ? crewPrompt(u) : 'ยังไม่ได้รับลิงก์ผลงานเลยค่ะ 🙏 ส่งลิงก์มาก่อน แล้วพิมพ์ "เรียบร้อย" อีกครั้งนะคะ'];
+    const now = new Date().toISOString();
+    await db.from('line_users').update({ status: 'applied', applied_at: now, status_changed_at: now }).eq('line_user_id', u.line_user_id);
+    u.status = 'applied';
+    return DONE_TEXTS;
+  }
+
   const url = msg.match(URL_RE)?.[0].replace(/[)\]>"']+$/, '') || '';
   const patch: Record<string, string> = {};
-  if (url) patch.portfolio_url = url.slice(0, 500);
+  if (url) { if (!u.portfolio_url) patch.portfolio_url = url.slice(0, 500); }
   else if (QUESTION.test(msg)) return null;
   else if (u.role === 'crew' && !u.full_name && msg.length <= 60) patch.full_name = msg.replace(/^(ชื่อ|ผม|ฉัน|ดิฉัน|หนู)\s*/, '').trim();
   else if (u.role === 'crew' && u.full_name && !u.position && msg.length <= 120) patch.position = msg.replace(/^(ได้หมด(เลย)?(ครับ|ค่ะ)?\s*)?(ส่วนใหญ่|ปกติ|หลัก ๆ)?\s*(ทำ|เป็น)?\s*/, '').trim() || msg;
   else return null;
 
   const next = { ...u, ...patch } as LineUser;
-  const complete = !!next.portfolio_url && (u.role === 'editor' || (!!next.full_name && !!next.position));
-  const now = new Date().toISOString();
-  await db.from('line_users').update({ ...patch, ...(complete ? { status: 'applied', applied_at: now, status_changed_at: now } : { status: 'applying' }) }).eq('line_user_id', u.line_user_id);
+  if (Object.keys(patch).length || u.status === 'new') await db.from('line_users').update({ ...patch, status: 'applying' }).eq('line_user_id', u.line_user_id);
   Object.assign(u, patch);
-  if (complete) return DONE_TEXTS;
+  if (url && ready(next)) return [u.portfolio_url && !patch.portfolio_url
+    ? 'ได้รับลิงก์เพิ่มแล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เรียบร้อย" ได้เลยนะคะ'
+    : 'ได้รับลิงก์ผลงานแล้วค่ะ ✅ ถ้ามีอีกส่งเพิ่มได้เลย ส่งครบแล้วพิมพ์ "เรียบร้อย" เพื่อไปขั้นถัดไปนะคะ'];
   if (u.role === 'crew') return [crewPrompt(next)];
   return [BEST_WORK_EDITOR];
 }
