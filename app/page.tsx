@@ -7,7 +7,7 @@ import Modal from '@/components/Modal';
 import { MonthGrid, MonthNav, Legend } from '@/components/Calendar';
 import CalendarSync from '@/components/CalendarSync';
 import WelcomeTour from '@/components/WelcomeTour';
-import { getMe } from '@/lib/me';
+import { getMe, isEditor } from '@/lib/me';
 import { getCache, setCache } from '@/lib/cache';
 import { sb, BUCKET } from '@/lib/supabase/client';
 import { loadFull } from '@/components/ProjectProvider';
@@ -41,6 +41,7 @@ export default function Overview() {
     const me = await getMe(); if (!me) return;
     const prof = me.profile;
     if (prof && !prof.onboarded_at) { router.replace('/welcome'); return; }
+    if (await isEditor()) { router.replace('/editor'); return; } // editors have their own home
     setMe({ id: me.id, name: prof?.full_name || '' });
     if (prof && (!prof.tour_done_at || new URLSearchParams(window.location.search).get('tour'))) setTour(true);
     if (window.location.search.includes('tour')) window.history.replaceState(null, '', '/');
@@ -55,6 +56,7 @@ export default function Overview() {
   async function closeTour() { setTour(false); if (me) await sb().from('profiles').update({ tour_done_at: new Date().toISOString() }).eq('id', me.id); }
 
   async function create() {
+    if (await isEditor()) { toast('การสร้างโปรเจกต์ใช้ได้เฉพาะทีมโปรดักชัน PM ผู้กำกับ และโปรดิวเซอร์'); return; }
     const me = await getMe();
     const { data, error } = await sb().from('projects').insert({ name: '', created_by: me!.id }).select('id').single();
     if (error) { toast(errText(error)); return; }
