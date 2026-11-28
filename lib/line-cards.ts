@@ -226,30 +226,31 @@ export function projectBrief(p: OcProject & { synopsis?: string | null; delivera
 const thDay = (ms: number | null) => ms ? new Date(ms).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ยังไม่กำหนด';
 const daysLeft = (ms: number | null) => ms ? Math.ceil((ms - Date.now()) / 864e5) : null;
 
-export type ProjectCall = { id: string; task_name: string; due_date: string | null; detail: string; rate: string; clips: number; reason: string; refs: string[]; left?: string[] };
+export type ProjectCall = { id: string; task_name: string; due_date: string | null; clips: number; reason: string; url: string; overdue: boolean; links: { label: string; url: string }[] };
 
-/** New (or re-opened) editing project for editors. First to tap "รับโปรเจกต์นี้" gets every open clip in ClickUp. */
+/**
+ * Open Call for an editing project (short): project, clips still to do, urgency or deadline, sample links,
+ * and how to accept. Accepting is recorded; the team assigns in ClickUp.
+ */
 export function projectCallCard(c: ProjectCall): LineMessage {
   const due = c.due_date ? +new Date(c.due_date) : null;
-  const late = due !== null && due < Date.now();
-  const btns: Btn[] = [{ label: '✋ รับงานนี้', data: `action=ed&c=${c.id}`, display: 'รับงานนี้ค่ะ/ครับ', primary: true }];
-  c.refs.slice(0, 2).forEach((u, i) => btns.push({ label: `▶ ดู REF ${c.refs.length > 1 ? i + 1 : ''}`.trim(), uri: u }));
-  const left = (c.left || []).map(n => n.replace(/[:：\s]+$/, '')).filter(Boolean);
-  return card(`Open Call · ${c.task_name} · ${c.clips} คลิป`,
-    `Open Call ✂️ ${c.task_name}`, [
-      `🎬 หานักตัดต่อ ${c.clips} คลิป${left.length && left.length <= 8 ? ': ' + left.join(', ') : ''}`,
-      late ? '⏰ เลยกำหนดเดิมแล้ว ทีมงานจะแจ้งกำหนดส่งใหม่กับคนที่รับ' : `⏰ Deadline: ${thDay(due)}`,
-      c.rate ? '💰 ' + c.rate : '',
-      c.detail ? '📝 ' + c.detail.slice(0, 280) + (c.detail.length > 280 ? '…' : '') : '',
-      'คนแรกที่กดรับ ได้งานชุดนี้ค่ะ'
-    ].filter(Boolean), btns, 'HOOSE · งานตัดต่อ');
+  const status = c.overdue || c.reason === 'reassign' ? '🔥 งานด่วน' : `⏰ Deadline ${thDay(due)}`;
+  const btns: Btn[] = [
+    ...c.links.map(l => ({ label: l.label, uri: l.url })),
+    { label: 'เปิดใน ClickUp', uri: c.url },
+    { label: '✋ รับงานนี้', data: `action=ed&c=${c.id}`, display: 'รับงานนี้', primary: true }
+  ];
+  return card(`หานักตัดต่อ · ${c.task_name} · ${c.clips} คลิป`, `หานักตัดต่อ · ${c.task_name}`, [
+    `🎬 ${c.clips} คลิปที่ยังไม่ได้ดำเนินการ`,
+    status,
+    'เช็กรายละเอียดใน ClickUp workspace · ถ้าต้องการรับ กดหรือพิมพ์ "รับงานนี้" ทีมงานจะมอบหมายงานให้ค่ะ'
+  ], btns, c.overdue ? 'HOOSE · งานด่วน' : 'HOOSE · งานตัดต่อ');
 }
 
 export function projectAssignedCard(c: { task_name: string; due_date: string | null; clips: number }, url: string, inClickUp: boolean): LineMessage {
-  return card(`ได้โปรเจกต์ ${c.task_name} แล้ว`, 'โปรเจกต์นี้เป็นของคุณแล้วค่ะ 🎉', [
-    `${c.task_name}${c.clips > 1 ? ` · ${c.clips} คลิป` : ''}`,
-    '⏰ Deadline: ' + thDay(c.due_date ? +new Date(c.due_date) : null),
-    inClickUp ? 'เปิด ClickUp เพื่อดูรายละเอียดทุกคลิปและอัปเดตสถานะได้เลยค่ะ' : 'ทีมงานจะใส่ชื่อคุณในโปรเจกต์บน ClickUp ให้ แล้วจะเห็นทุกคลิปในนั้นค่ะ'
+  return card(`รับงาน ${c.task_name} แล้ว`, 'รับงานแล้วค่ะ 🎉', [
+    `${c.task_name} · ${c.clips} คลิป`,
+    inClickUp ? 'เปิด ClickUp เพื่อดูรายละเอียดทุกคลิปและอัปเดตสถานะได้เลยค่ะ' : 'ได้รับแล้วค่ะ ทีมงานจะมอบหมายงานนี้ให้คุณใน ClickUp แล้วแจ้งกลับนะคะ'
   ], inClickUp ? [{ label: 'เปิดโปรเจกต์ใน ClickUp', uri: url, primary: true }] : [], 'HOOSE · งานตัดต่อ');
 }
 

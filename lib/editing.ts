@@ -41,7 +41,7 @@ export function statsFor(tasks: CuTask[], userId: number, now = Date.now()): Edi
 // ---------- Projects: a ClickUp parent task and its clips (subtasks) ----------
 
 export type Project = {
-  id: string; name: string; url: string; status: string; description: string;
+  id: string; name: string; url: string; status: string; description: string; markdown: string;
   due: number | null;            // project due date, else the latest clip due date
   clips: CuTask[];               // subtasks (empty when the project is a single task)
   open: CuTask[];                // clips not finished (or the project itself when it has no clips)
@@ -49,10 +49,32 @@ export type Project = {
   done: boolean; date_updated: number; date_done: number | null; date_created: number;
 };
 
-const REF_RE = /https?:\/\/[^\s)>\]"']+/g;
-/** Reference links found in a ClickUp description (video, drive, social). */
-export function refLinks(text: string) {
-  return Array.from(new Set((text || '').match(REF_RE) || [])).slice(0, 5);
+const URL_RE = /https?:\/\/[^\s)<>\]"'*]+/g;
+export type RefLink = { label: string; url: string };
+
+/**
+ * Links in a ClickUp description, labelled from the words just before them
+ * (REF / ตัวอย่าง → sample, DRIVE / ฟุตเทจ → files, UPLOAD / ส่งงาน → where to deliver).
+ * Pass the markdown description: ClickUp's plain text drops the URLs.
+ */
+export function refLinks(markdown: string, max = 3): RefLink[] {
+  const out: RefLink[] = []; const seen = new Set<string>();
+  const text = (markdown || '').replace(/\\_/g, '_');
+  for (const m of Array.from(text.matchAll(URL_RE))) {
+    const url = m[0].replace(/[.,;]+$/, '');
+    const key = url.replace(/[?#].*$/, '');
+    if (seen.has(key)) continue; seen.add(key);
+    const before = text.slice(Math.max(0, m.index! - 60), m.index!).toLowerCase();
+    const host = url.toLowerCase();
+    const label = /upload|ส่งงาน|อัปโหลด|อัพโหลด|โฟลเดอร์ส่ง/.test(before) ? '📤 ที่ส่งงาน'
+      : /ref|ตัวอย่าง|reference/.test(before) || /youtu|tiktok|instagram|vimeo|facebook|fb\.watch/.test(host) ? '▶ ตัวอย่างผลงาน'
+      : /drive|ฟุตเทจ|footage|ไฟล์|raw/.test(before) || /drive\.google|dropbox/.test(host) ? '📁 ไฟล์งาน'
+      : '🔗 ลิงก์';
+    out.push({ label, url });
+  }
+  // samples first, then files, then the rest
+  const rank = (l: string) => l.startsWith('▶') ? 0 : l.startsWith('📁') ? 1 : l.startsWith('📤') ? 2 : 3;
+  return out.sort((a, b) => rank(a.label) - rank(b.label)).slice(0, max);
 }
 
 /** Group the editing list into projects. Only current ones (see currentTasks) unless includeAll. */
@@ -72,7 +94,7 @@ export function projectsOf(tasks: CuTask[], now = Date.now(), includeAll = false
     const people = new Map<number, string>();
     for (const t of [r, ...open]) for (const a of t.assignees) people.set(a.id, a.username);
     out.push({
-      id: r.id, name: r.name, url: r.url, status: r.status, description: r.description,
+      id: r.id, name: r.name, url: r.url, status: r.status, description: r.description, markdown: r.markdown,
       due: r.due_date || (dues.length ? Math.max(...dues) : null), clips, open,
       assignees: Array.from(people.entries()).map(([id, username]) => ({ id, username })),
       done, date_created: r.date_created, date_updated: Math.max(r.date_updated, ...clips.map(c => c.date_updated)), date_done: done ? (r.date_done || Math.max(0, ...clips.map(c => c.date_done || 0)) || null) : null
