@@ -250,7 +250,8 @@ function Projects({ list, me }: { list: Project[]; me: Me | null }) {
 }
 
 type WTask = { id: string; name: string; parent_name: string; url: string; status: string; stage: string; due_date: number | null; date_done: number | null };
-type WorkData = { linked: boolean; reason?: string; stats?: { active: number; todo: number; review: number; overdue: number; dueSoon: number; done30: number; onTime: number | null }; open?: WTask[]; done?: WTask[] };
+type WProject = { id: string; name: string; url: string; due: number | null; total: number; left: { name: string; stage: string; status: string }[] };
+type WorkData = { linked: boolean; reason?: string; projects?: WProject[]; stats?: { active: number; todo: number; review: number; overdue: number; dueSoon: number; done30: number; onTime: number | null }; open?: WTask[]; done?: WTask[] };
 
 /** Editor landing: current ClickUp jobs, due dates and a small performance summary. */
 function Work({ liff, back }: { liff: Liff; back: React.ReactNode }) {
@@ -282,11 +283,12 @@ function Work({ liff, back }: { liff: Liff; back: React.ReactNode }) {
       {tile('เสร็จ 30 วัน', s.done30)}{tile('ส่งตรงเวลา', s.onTime === null ? '–' : s.onTime + '%')}{tile('รอตรวจ / แก้', s.review)}
     </div>
     <section className="card" style={{ gap: 10 }}>
-      <h2>งานปัจจุบัน</h2>
-      {!w.open!.length ? <span className="mut">ตอนนี้ไม่มีงานค้าง 🙌 มีงานใหม่น้องฮูสจะส่งให้ในแชทค่ะ</span> : w.open!.map(t => (
-        <a key={t.id} href={t.url} target="_blank" rel="noreferrer" style={{ display: 'flex', flexDirection: 'column', gap: 2, borderBottom: '1px solid var(--line)', paddingBottom: 8, color: 'inherit' }}>
-          <div className="between" style={{ gap: 8 }}><b className="ell">{t.name}</b><span className={t.stage === 'todo' ? 'chip o' : 'chip lb'}>{STAGE[t.stage]}</span></div>
-          <span className="mut" style={{ fontSize: 12 }}>{t.parent_name ? t.parent_name + ' · ' : ''}{due(t)}</span>
+      <h2>โปรเจกต์ปัจจุบัน</h2>
+      {!w.projects?.length ? <span className="mut">ตอนนี้ไม่มีงานค้าง 🙌 มีโปรเจกต์ใหม่น้องฮูสจะส่งให้ในแชทค่ะ</span> : w.projects.map(p => (
+        <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'flex', flexDirection: 'column', gap: 4, borderBottom: '1px solid var(--line)', paddingBottom: 10, color: 'inherit' }}>
+          <div className="between" style={{ gap: 8 }}><b className="ell">{p.name}</b><span className={p.due && p.due < Date.now() ? 'chip b' : 'chip lb'}>{due({ due_date: p.due } as WTask)}</span></div>
+          <span className="mut" style={{ fontSize: 12 }}>{p.total > 1 ? `ยังไม่ส่ง ${p.left.length} จาก ${p.total} คลิป` : STAGE[p.left[0]?.stage || 'todo']}</span>
+          {p.total > 1 && <span style={{ fontSize: 12 }}>{p.left.slice(0, 8).map(c => c.name).join(' · ')}{p.left.length > 8 ? ' …' : ''}</span>}
         </a>))}
     </section>
     {w.done!.length > 0 && (

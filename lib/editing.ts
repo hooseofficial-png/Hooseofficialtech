@@ -37,3 +37,46 @@ export function statsFor(tasks: CuTask[], userId: number, now = Date.now()): Edi
     onTime: withDue.length ? Math.round(withDue.filter(t => t.date_done! <= t.due_date! + 864e5).length / withDue.length * 100) : null
   };
 }
+
+// ---------- Projects: a ClickUp parent task and its clips (subtasks) ----------
+
+export type Project = {
+  id: string; name: string; url: string; status: string; description: string;
+  due: number | null;            // project due date, else the latest clip due date
+  clips: CuTask[];               // subtasks (empty when the project is a single task)
+  open: CuTask[];                // clips not finished (or the project itself when it has no clips)
+  assignees: { id: number; username: string }[];
+  done: boolean; date_updated: number; date_done: number | null;
+};
+
+const REF_RE = /https?:\/\/[^\s)>\]"']+/g;
+/** Reference links found in a ClickUp description (video, drive, social). */
+export function refLinks(text: string) {
+  return Array.from(new Set((text || '').match(REF_RE) || [])).slice(0, 5);
+}
+
+/** Group the editing list into projects. Only current ones (see currentTasks) unless includeAll. */
+export function projectsOf(tasks: CuTask[], now = Date.now(), includeAll = false): Project[] {
+  const current = new Set(currentTasks(tasks, now).current.map(t => t.id));
+  const children = new Map<string, CuTask[]>();
+  for (const t of tasks) if (t.parent) children.set(t.parent, [...(children.get(t.parent) || []), t]);
+  const roots = tasks.filter(t => !t.parent);
+  const out: Project[] = [];
+  for (const r of roots) {
+    const clips = (children.get(r.id) || []).sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }));
+    const done = stage(r) === 'done' || (clips.length > 0 && clips.every(c => stage(c) === 'done'));
+    const open = clips.length ? clips.filter(c => stage(c) !== 'done') : (done ? [] : [r]);
+    const live = current.has(r.id) || open.some(c => current.has(c.id));
+    if (!includeAll && (done || !live)) continue;
+    const dues = [r.due_date, ...clips.map(c => c.due_date)].filter((x): x is number => !!x);
+    const people = new Map<number, string>();
+    for (const t of [r, ...open]) for (const a of t.assignees) people.set(a.id, a.username);
+    out.push({
+      id: r.id, name: r.name, url: r.url, status: r.status, description: r.description,
+      due: r.due_date || (dues.length ? Math.max(...dues) : null), clips, open,
+      assignees: Array.from(people.entries()).map(([id, username]) => ({ id, username })),
+      done, date_updated: Math.max(r.date_updated, ...clips.map(c => c.date_updated)), date_done: done ? (r.date_done || Math.max(0, ...clips.map(c => c.date_done || 0)) || null) : null
+    });
+  }
+  return out.sort((a, b) => (a.due || 9e15) - (b.due || 9e15));
+}

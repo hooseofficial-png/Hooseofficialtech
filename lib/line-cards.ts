@@ -221,38 +221,58 @@ export function projectBrief(p: OcProject & { synopsis?: string | null; delivera
   ].filter(Boolean).join('\n');
 }
 
-// ---------- Editing jobs (ClickUp) ----------
+// ---------- Editing projects (ClickUp) ----------
 
-export type EditCall = { id: string; task_name: string; parent_name: string; due_date: string | null; detail: string; rate: string };
-const thDateTime = (d: string | null) => d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ยังไม่กำหนด';
+const thDay = (ms: number | null) => ms ? new Date(ms).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ยังไม่กำหนด';
+const daysLeft = (ms: number | null) => ms ? Math.ceil((ms - Date.now()) / 864e5) : null;
 
-/** Job call for editors: first to tap "รับงานนี้" gets it (assigned in ClickUp automatically). */
-export function editingCallCard(c: EditCall): LineMessage {
-  return card(`งานตัดต่อใหม่ · ${c.task_name}`, `${c.task_name} ✂️`, [
-    c.parent_name ? '📁 ' + c.parent_name : '',
-    '⏰ ส่งงาน: ' + thDateTime(c.due_date),
-    c.rate ? '💰 ' + c.rate : '',
-    c.detail ? '📝 ' + c.detail.slice(0, 300) : '',
-    'คนแรกที่กดรับ ได้งานนี้เลยค่ะ'
-  ].filter(Boolean), [{ label: '✋ รับงานนี้', data: `action=ed&c=${c.id}`, display: 'รับงานนี้ค่ะ/ครับ', primary: true }], 'HOOSE · งานตัดต่อ');
+export type ProjectCall = { id: string; task_name: string; due_date: string | null; detail: string; rate: string; clips: number; reason: string; refs: string[] };
+
+/** New (or re-opened) editing project for editors. First to tap "รับโปรเจกต์นี้" gets every open clip in ClickUp. */
+export function projectCallCard(c: ProjectCall): LineMessage {
+  const due = c.due_date ? +new Date(c.due_date) : null;
+  const late = due !== null && due < Date.now();
+  const btns: Btn[] = [{ label: '✋ รับโปรเจกต์นี้', data: `action=ed&c=${c.id}`, display: 'รับโปรเจกต์นี้ค่ะ/ครับ', primary: true }];
+  c.refs.slice(0, 2).forEach((u, i) => btns.push({ label: `▶ ดู REF ${c.refs.length > 1 ? i + 1 : ''}`.trim(), uri: u }));
+  return card(`${c.reason === 'reassign' ? 'ด่วน · หาคนตัดแทน' : 'โปรเจกต์ใหม่'} · ${c.task_name}`,
+    `${c.reason === 'reassign' ? 'ด่วน! หาคนตัดแทน' : 'โปรเจกต์ใหม่มาแล้ว'} ✂️ ${c.task_name}`, [
+      c.clips > 1 ? `🎬 ${c.clips} คลิป` : '🎬 1 งาน',
+      late ? '⏰ เลยกำหนดเดิมแล้ว ทีมงานจะแจ้งกำหนดส่งใหม่กับคนที่รับ' : `⏰ Deadline: ${thDay(due)}`,
+      c.rate ? '💰 ' + c.rate : '',
+      c.detail ? '📝 ' + c.detail.slice(0, 280) + (c.detail.length > 280 ? '…' : '') : '',
+      'คนแรกที่กดรับ ได้โปรเจกต์นี้ค่ะ'
+    ].filter(Boolean), btns, 'HOOSE · งานตัดต่อ');
 }
 
-export function editingAssignedCard(c: EditCall, taskUrl: string, inClickUp: boolean): LineMessage {
-  return card(`ได้งาน ${c.task_name} แล้ว`, 'งานนี้เป็นของคุณแล้วค่ะ 🎉', [
-    `${c.task_name}${c.parent_name ? ' · ' + c.parent_name : ''}`,
-    '⏰ ส่งงาน: ' + thDateTime(c.due_date),
-    inClickUp ? 'เข้า ClickUp เพื่อดูรายละเอียดและอัปเดตสถานะงานได้เลยค่ะ' : 'ทีมงานจะส่งคำเชิญ ClickUp ให้ แล้วจะได้เห็นงานในนั้นค่ะ'
-  ], inClickUp ? [{ label: 'เปิดงานใน ClickUp', uri: taskUrl, primary: true }] : [], 'HOOSE · งานตัดต่อ');
+export function projectAssignedCard(c: { task_name: string; due_date: string | null; clips: number }, url: string, inClickUp: boolean): LineMessage {
+  return card(`ได้โปรเจกต์ ${c.task_name} แล้ว`, 'โปรเจกต์นี้เป็นของคุณแล้วค่ะ 🎉', [
+    `${c.task_name}${c.clips > 1 ? ` · ${c.clips} คลิป` : ''}`,
+    '⏰ Deadline: ' + thDay(c.due_date ? +new Date(c.due_date) : null),
+    inClickUp ? 'เปิด ClickUp เพื่อดูรายละเอียดทุกคลิปและอัปเดตสถานะได้เลยค่ะ' : 'ทีมงานจะส่งคำเชิญ ClickUp ให้ แล้วจะเห็นงานในนั้นค่ะ'
+  ], inClickUp ? [{ label: 'เปิดโปรเจกต์ใน ClickUp', uri: url, primary: true }] : [], 'HOOSE · งานตัดต่อ');
 }
 
-export function reminderCard(kind: 'not_started' | 'due_soon' | 'overdue' | 'done', t: { name: string; parent_name: string; url: string; due_date: number | null }, name: string): LineMessage {
-  const title = `${t.name}${t.parent_name ? ' · ' + t.parent_name : ''}`;
-  const due = t.due_date ? new Date(t.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) : '';
-  const text = {
-    not_started: [`คุณ${name} ยังมีงานนี้ที่ยังไม่ได้เริ่มตัดนะคะ ✂️`, title, 'เข้า ClickUp เพื่อเริ่มงานและอัปเดตสถานะได้เลยค่ะ'],
-    due_soon: [`อีก 3 วันครบกำหนดแล้วนะคะ ⏰ เริ่มแล้วหรือยังคะ?`, title + (due ? ' · ส่ง ' + due : ''), 'ติดอะไรบอกน้องฮูสได้เลยค่ะ'],
-    overdue: [`งานนี้เลยกำหนดส่งแล้วค่ะ 🙏`, title + (due ? ' · กำหนด ' + due : ''), 'อัปเดตสถานะใน ClickUp หรือบอกน้องฮูสว่าต้องการเวลาเพิ่มไหมคะ'],
-    done: [`งานเสร็จสิ้นแล้ว ขอบคุณในความร่วมมือมาก ๆ เลยค่ะ 🙌`, title, 'มีงานใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ก่อนเลยนะคะ 💙']
-  }[kind];
-  return card(text[0], text[0], text.slice(1), kind === 'done' ? [] : [{ label: 'เปิดใน ClickUp', uri: t.url, primary: true }], 'HOOSE · งานตัดต่อ');
+/** Individual heads-up: one project close to its deadline, with the clips not delivered yet. */
+export function dueSoonCard(p: { name: string; url: string; due: number | null; open: { name: string }[]; total: number }, person: string): LineMessage {
+  const d = daysLeft(p.due);
+  const left = p.open.map(c => c.name).slice(0, 6).join(', ') + (p.open.length > 6 ? ` และอีก ${p.open.length - 6}` : '');
+  return card(`ใกล้ครบกำหนด · ${p.name}`, `${p.name} ใกล้ครบกำหนดแล้วนะคะ ⏰`, [
+    `คุณ${person} · Deadline ${thDay(p.due)}${d !== null ? (d <= 0 ? ' (วันนี้)' : ` (อีก ${d} วัน)`) : ''}`,
+    p.total > 1 ? `ยังไม่ได้ส่ง ${p.open.length} จาก ${p.total} คลิป: ${left}` : 'ยังไม่ได้ส่งงานนี้',
+    'อัปเดตสถานะใน ClickUp ได้เลย ติดอะไรบอกน้องฮูสได้ค่ะ 💙'
+  ], [{ label: 'เปิดใน ClickUp', uri: p.url, primary: true }], 'HOOSE · งานตัดต่อ');
+}
+
+/** To the editor whose overdue project was handed to someone else. */
+export function reassignedCard(p: { name: string; due: number | null }, person: string): LineMessage {
+  return card(`ส่งต่อโปรเจกต์ ${p.name}`, 'โปรเจกต์นี้ขอส่งต่อให้คนอื่นนะคะ 🙏', [
+    `คุณ${person} · ${p.name} เลยกำหนด ${thDay(p.due)} แล้ว`,
+    'ทีมงานจึงขอส่งต่อให้คนอื่นช่วยตัดต่อ ถ้าทำเสร็จไปบางคลิปแล้ว หรือมีเหตุจำเป็น พิมพ์บอกน้องฮูสได้เลยค่ะ'
+  ], [], 'HOOSE · งานตัดต่อ');
+}
+
+export function projectDoneCard(p: { name: string }, person: string): LineMessage {
+  return card(`โปรเจกต์ ${p.name} เสร็จสิ้น`, 'โปรเจกต์เสร็จสิ้นแล้ว ขอบคุณมาก ๆ เลยค่ะ 🙌', [
+    `คุณ${person} · ${p.name}`, 'ขอบคุณในความร่วมมือนะคะ มีโปรเจกต์ใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ก่อนเลย 💙'
+  ], [], 'HOOSE · งานตัดต่อ');
 }
