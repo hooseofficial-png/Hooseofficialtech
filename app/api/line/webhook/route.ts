@@ -3,7 +3,7 @@ import { sbAdmin } from '@/lib/supabase/server';
 import { getProfile, lineConfigured, reply, signLink, splitReply, startLoading, text, verifySignature, type LineMessage } from '@/lib/line';
 import { ACCOUNT_DONE_TEXTS, DONE_RE, DONE_TEXTS, FINISH_HINT, nextStepCard, resultCard, statusCard, welcomeCard, withQuickMenu } from '@/lib/line-cards';
 import { claimProject } from '@/lib/editing-engine';
-import { answer, SORRY, type LineUser } from '@/lib/line-agent';
+import { answer, isMember, sorryFor, type LineUser } from '@/lib/line-agent';
 
 // HOOSE Official LINE OA webhook.
 // LINE Developers → Messaging API → Webhook URL: https://app.hooseofficial.site/api/line/webhook
@@ -93,7 +93,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
   }
 
   if (ev.type === 'message') {
-    if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text('น้องฮูสอ่านได้เฉพาะข้อความนะคะ 😊 ถ้าจะส่งผลงาน ส่งเป็นลิงก์ (Google Drive, YouTube, Vimeo หรือ Portfolio) มาได้เลยค่ะ')]); return; }
+    if (ev.message?.type !== 'text') { await reply(ev.replyToken, [text(isMember(u) ? 'น้องฮูสอ่านได้เฉพาะข้อความนะคะ 😊 ส่งเป็นลิงก์หรือพิมพ์มาได้เลยค่ะ' : 'รับได้เฉพาะข้อความค่ะ กรุณาส่งผลงานเป็นลิงก์ (Google Drive, YouTube, Vimeo หรือ Portfolio)')]); return; }
     const msg = (ev.message.text || '').trim();
     const quick = (m: LineMessage) => withQuickMenu(m, u);
     if (MENU.test(msg)) { await reply(ev.replyToken, [welcomeCard(u.display_name)]); return; }
@@ -113,8 +113,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
     if (u.status === 'interview' && (DONE_WORD.test(msg) || BOOKED.test(msg))) {
       const now = new Date().toISOString(); const name = u.full_name || u.display_name || '';
       await db.from('line_users').update({ interview_booked_at: now, needs_attention: true, attention_note: 'แจ้งว่านัดเวลาคุยแล้ว', attention_at: now }).eq('line_user_id', userId);
-      const out = [`ขอบคุณค่ะคุณ${name} 🙌 ได้รับแล้วว่านัดเวลาเรียบร้อย ทีม HOOSE จะคุยกับคุณตามเวลาที่นัดไว้นะคะ`,
-        `คุยเสร็จแล้ว น้องฮูสจะส่งเอกสารและแบบฟอร์มข้อมูลมาในแชทนี้ ได้รับแล้วอ่าน กรอกฟอร์ม แล้วพิมพ์ "เสร็จสิ้น" นะคะ 💙`];
+      const out = [`รับทราบการนัดหมายของคุณ${name} แล้วค่ะ หลังคุยกับทีม เอกสารและแบบฟอร์มข้อมูลจะส่งมาในแชทนี้ค่ะ`];
       await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg }, { line_user_id: userId, role: 'assistant', content: out.join('\n') }]);
       await reply(ev.replyToken, out.map(t => text(t)));
       return;
@@ -124,7 +123,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       const name = u.full_name || u.display_name || '';
       const out = u.profile_id
         ? [resultCard('active', u.role, ACCOUNT_DONE_TEXTS.join(' '))!]
-        : [text(`ยังไม่เห็นบัญชี HOOSE ที่ผูกกับ LINE นี้เลยค่ะคุณ${name} 🙏 กดปุ่มด้านล่าง สร้างบัญชีหรือเข้าสู่ระบบให้เสร็จ แล้วพิมพ์ "เสร็จสิ้น" อีกครั้งนะคะ`),
+        : [text(`ยังไม่พบบัญชี HOOSE ที่ผูกกับ LINE ของคุณ${name} ค่ะ กรุณากดปุ่มด้านล่างเพื่อสร้างบัญชีหรือเข้าสู่ระบบ แล้วพิมพ์ "เสร็จสิ้น" อีกครั้งค่ะ`),
            resultCard('approved', u.role, 'สร้างบัญชี / เข้าสู่ระบบ HOOSE', '', signLink(userId))!];
       await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg }, { line_user_id: userId, role: 'assistant', content: u.profile_id ? '[บัญชีพร้อมแล้ว]' : '[ส่งลิงก์สร้างบัญชีอีกครั้ง]' }]);
       await reply(ev.replyToken, out);
@@ -136,7 +135,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
       const now = new Date().toISOString();
       await db.from('line_users').update({ status: 'approved', status_changed_at: now }).eq('line_user_id', userId);
       const name = u.full_name || u.display_name || '';
-      const c = resultCard('approved', u.role, `ได้รับข้อมูลครบแล้วค่ะคุณ${name} 🙌`, '', signLink(userId))!;
+      const c = resultCard('approved', u.role, `ได้รับข้อมูลของคุณ${name} ครบถ้วนแล้วค่ะ`, '', signLink(userId))!;
       await db.from('line_messages').insert([{ line_user_id: userId, role: 'user', content: msg }, { line_user_id: userId, role: 'assistant', content: '[สร้างบัญชี HOOSE] ส่งลิงก์สร้างบัญชีแล้ว' }]);
       await reply(ev.replyToken, [c]);
       return;
@@ -151,7 +150,7 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
     }
 
     await startLoading(userId, 30);
-    let ans: { text: string; card: string | null } = { text: SORRY, card: null };
+    let ans: { text: string; card: string | null } = { text: sorryFor(u), card: null };
     try { ans = await answer(db, u, msg); }
     catch (e) {
       // Logged for the team (Vercel logs + admin page); the user only sees a friendly line.
@@ -167,15 +166,15 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
   }
 }
 
-const BEST_WORK_CREW = 'ขอดูผลงานในกองถ่ายที่คุณชอบที่สุดค่ะ 🎬 ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ' + FINISH_HINT;
-const BEST_WORK_EDITOR = 'ขอดูผลงานที่คุณคิดว่าตัดออกมาดีที่สุดค่ะ ✨ ส่งลิงก์มาได้เลย (Google Drive, YouTube, Vimeo หรือ Portfolio) ' + FINISH_HINT;
+const BEST_WORK_CREW = 'กรุณาส่งลิงก์ผลงานในกองถ่ายที่ดีที่สุดของคุณ (Google Drive, YouTube, Vimeo หรือ Portfolio) ค่ะ ' + FINISH_HINT;
+const BEST_WORK_EDITOR = 'กรุณาส่งลิงก์ผลงานตัดต่อที่ดีที่สุดของคุณ (Google Drive, YouTube, Vimeo หรือ Portfolio) ค่ะ ' + FINISH_HINT;
 
 /** What to ask a crew applicant next (never asks again for something already given). */
 function crewPrompt(u: LineUser) {
-  if (!u.full_name) return 'ยินดีต้อนรับทีมโปรดักชันค่ะ 🎥 ขอทราบชื่อ-นามสกุลก่อนนะคะ 😊';
-  if (!u.position) return `ยินดีที่ได้รู้จักค่ะคุณ${u.full_name} 😊 ปกติคุณทำตำแหน่งอะไรในกองถ่ายคะ? (เช่น Camera Assistant, Gaffer, Art, PA)`;
+  if (!u.full_name) return 'กรุณาพิมพ์ชื่อ-นามสกุลของคุณค่ะ';
+  if (!u.position) return `ขอบคุณค่ะคุณ${u.full_name} กรุณาพิมพ์ตำแหน่งที่คุณทำในกองถ่าย (เช่น Camera Assistant, Gaffer, Art, PA) ค่ะ`;
   if (!u.portfolio_url) return BEST_WORK_CREW;
-  return 'ได้รับลิงก์แล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เสร็จสิ้น" ได้เลยนะคะ';
+  return 'ได้รับลิงก์แล้วค่ะ ' + FINISH_HINT;
 }
 
 /**
@@ -188,7 +187,7 @@ async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string):
 
   // "เสร็จสิ้น" (or เรียบร้อย): the applicant says they have sent everything.
   if (DONE_WORD.test(msg)) {
-    if (!ready(u)) return [u.role === 'crew' ? crewPrompt(u) : 'ยังไม่ได้รับลิงก์ผลงานเลยค่ะ 🙏 ส่งลิงก์มาก่อน แล้วพิมพ์ "เสร็จสิ้น" อีกครั้งนะคะ'];
+    if (!ready(u)) return [u.role === 'crew' ? crewPrompt(u) : 'ยังไม่ได้รับลิงก์ผลงานค่ะ กรุณาส่งลิงก์ก่อน แล้วพิมพ์ "เสร็จสิ้น" อีกครั้งค่ะ'];
     const now = new Date().toISOString();
     await db.from('line_users').update({ status: 'applied', applied_at: now, status_changed_at: now }).eq('line_user_id', u.line_user_id);
     u.status = 'applied';
@@ -207,8 +206,8 @@ async function intake(db: ReturnType<typeof sbAdmin>, u: LineUser, msg: string):
   if (Object.keys(patch).length || u.status === 'new') await db.from('line_users').update({ ...patch, status: 'applying' }).eq('line_user_id', u.line_user_id);
   Object.assign(u, patch);
   if (url && ready(next)) return [u.portfolio_url && !patch.portfolio_url
-    ? 'ได้รับลิงก์เพิ่มแล้วค่ะ ✅ ส่งครบแล้วพิมพ์ "เสร็จสิ้น" ได้เลยนะคะ'
-    : 'ได้รับลิงก์ผลงานแล้วค่ะ ✅ ถ้ามีอีกส่งเพิ่มได้เลย ส่งครบแล้วพิมพ์ "เสร็จสิ้น" เพื่อไปขั้นถัดไปนะคะ'];
+    ? 'ได้รับลิงก์เพิ่มแล้วค่ะ ' + FINISH_HINT
+    : 'ได้รับลิงก์ผลงานแล้วค่ะ ส่งเพิ่มได้ เมื่อครบแล้วกรุณาพิมพ์ "เสร็จสิ้น" ค่ะ'];
   if (u.role === 'crew') return [crewPrompt(next)];
   return [BEST_WORK_EDITOR];
 }

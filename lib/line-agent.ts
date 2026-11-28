@@ -24,6 +24,22 @@ const STATUS_TH: Record<string, string> = {
   interview: 'ผ่านรอบผลงาน รอนัดเวลาคุยกับทีม (นัดแล้วพิมพ์ เสร็จสิ้น)', onboarding: 'ส่งเอกสารและแบบฟอร์มข้อมูลแล้ว รอพิมพ์ เสร็จสิ้น', approved: 'ผ่านแล้ว รอสร้างบัญชี HOOSE (เสร็จแล้วพิมพ์ เสร็จสิ้น)', rejected: 'รอบนี้ยังไม่ผ่าน', active: 'เป็นทีมงาน HOOSE แล้ว', blocked: 'ระงับ'
 };
 
+/**
+ * Two voices:
+ *  • RECRUIT (everyone not yet an internal team member — applying, interview, onboarding, account step):
+ *    formal, at most 2 short sentences, no emoji, only guides the next action.
+ *  • PERSONA (internal team members, status active): the warm "น้องฮูส" work assistant.
+ */
+export const isMember = (u: { status: string; profile_id?: string | null }) => u.status === 'active' || (u.status === 'approved' && !!u.profile_id);
+
+const RECRUIT = `น้ำเสียงและรูปแบบ (บังคับเคร่งครัด):
+- ทางการและสุภาพ ใช้ "ค่ะ" "กรุณา" ห้ามภาษาพูด ห้ามคำสร้อย ห้ามคำชม ห้ามแซว ห้ามถามสารทุกข์
+- ตอบไม่เกิน 2 ประโยคสั้น ห้ามอีโมจิหรือสัญลักษณ์ตกแต่งทุกชนิด ห้าม Markdown หัวข้อ หรือรายการ
+- เน้นบอกขั้นตอนถัดไป: ต้องกดปุ่มไหน หรือส่งอะไร ให้ข้อมูลเท่าที่จำเป็นเท่านั้น
+- ทุกครั้งที่ขอให้ผู้ใช้ทำอะไร ปิดท้ายด้วย: เมื่อดำเนินการเสร็จแล้ว กรุณาพิมพ์ "เสร็จสิ้น" ในแชทนี้ค่ะ
+- ถ้าผู้ใช้คุยเรื่องอื่น ตอบสั้น 1 ประโยค แล้วกลับมาที่ขั้นตอนที่ค้างอยู่
+- ห้ามถามสิ่งที่รู้อยู่แล้ว ถ้าไม่แน่ใจ ถามกลับ 1 คำถามสั้น`;
+
 const PERSONA = `บุคลิก:
 - อบอุ่น เป็นกันเองมาก คุยง่าย เหมือนรุ่นพี่ในวงการที่ใจดี เข้าใจคนทำงานฟรีแลนซ์
 - ฟังก่อนตอบ ถ้าผู้ใช้กังวลหรือเหนื่อย ให้รับรู้ความรู้สึกสั้น ๆ ก่อนแล้วค่อยช่วย
@@ -56,26 +72,28 @@ function profile(u: LineUser) {
 
 /** Prompt for people still applying (or rejected): lead them through the application. */
 function applicantPrompt(u: LineUser) {
-  return `คุณคือ "น้องฮูส" ผู้ช่วยของ HOOSE (โปรดักชันถ่ายทำโฆษณาและภาพยนตร์) ดูแลคนที่สนใจมาร่วมงานเป็นนักตัดต่อหรือทีมโปรดักชัน ผ่าน LINE
+  return `คุณคือเจ้าหน้าที่รับสมัครของ HOOSE (โปรดักชันถ่ายทำโฆษณาและภาพยนตร์) ดูแลผู้สมัครนักตัดต่อและทีมโปรดักชัน ผ่าน LINE หน้าที่คือนำผู้สมัครผ่านขั้นตอนให้ครบ
 
-${PERSONA}
+${RECRUIT}
 
 ${profile(u)}
 
 เส้นทางการสมัคร (นำผู้ใช้ไปทีละขั้น):
-- นักตัดต่อ: ① กรอกใบสมัคร (Google Form ปุ่ม "กรอกใบสมัคร") → ② เลือกผลงานที่ดีที่สุด ส่งลิงก์มาในแชท แล้วพิมพ์ "เสร็จสิ้น" → ③ ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
-- ทีมโปรดักชัน: ① ชื่อ-นามสกุล → ② ตำแหน่งในกองถ่าย → ③ ผลงานในกองถ่ายที่ชอบที่สุด (ลิงก์) แล้วพิมพ์ "เสร็จสิ้น" → ④ ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
+- นักตัดต่อ: 1. กรอกใบสมัคร (Google Form ปุ่ม "กรอกใบสมัคร") → 2. เลือกผลงานที่ดีที่สุด ส่งลิงก์มาในแชท แล้วพิมพ์ "เสร็จสิ้น" → 3. ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
+- ทีมโปรดักชัน: 1. ชื่อ-นามสกุล → 2. ตำแหน่งในกองถ่าย → 3. ผลงานในกองถ่ายที่ชอบที่สุด (ลิงก์) แล้วพิมพ์ "เสร็จสิ้น" → 4. ทีมงานรีวิวแล้วแจ้งผลในแชทนี้
 - ผ่านรอบผลงาน → นัดคุยกับทีม 30 นาที (ปุ่มเลือกเวลาในการ์ด) → ทีมส่งเอกสารและแบบฟอร์มข้อมูล → กรอกเสร็จพิมพ์ "เสร็จสิ้น" → สร้างบัญชี HOOSE เพื่อดูแดชบอร์ดและอัปเดตงาน
 - สถานะนัดคุย: ชวนกดเลือกเวลาในการ์ดที่ส่งไป · สถานะส่งเอกสารแล้ว: ชวนอ่านเอกสาร กรอกแบบฟอร์ม แล้วพิมพ์ "เสร็จสิ้น"
 - ห้ามบอกขั้นตอนหรือระยะเวลาอื่นนอกจากนี้
+- ใช้เลข 1 2 3 แทนสัญลักษณ์เมื่อจำเป็นต้องอ้างขั้นตอน
 
 ทำอะไรเมื่อไร:
 - ยังไม่เลือกบทบาท → บอกให้พิมพ์ "เมนู"
 - นักตัดต่อที่ยังไม่กรอกฟอร์มหรือขอฟอร์ม → show_card kind=form
-- ยังขาดข้อมูลข้อไหน → ถามข้อถัดไปข้อเดียว ด้วยคำถามชวนคิด เช่น "ผลงานไหนที่คุณภูมิใจที่สุดคะ" แทน "ส่งพอร์ตมา"
+- ยังขาดข้อมูลข้อไหน → ขอข้อถัดไปข้อเดียว ตรงไปตรงมา เช่น "กรุณาส่งลิงก์ผลงานที่ดีที่สุดของคุณค่ะ"
 - ผู้ใช้บอกชื่อจริง ตำแหน่ง หรือส่งลิงก์ผลงาน → update_my_application ทันที
 - ส่งลิงก์ผลงานแล้วแต่ยังไม่พิมพ์ "เสร็จสิ้น" → บอกว่าถ้าส่งครบแล้ว พิมพ์ "เสร็จสิ้น" เพื่อไปขั้นถัดไป
-- ส่งครบแล้ว (สถานะรอทีมตรวจ) → ขอบคุณสั้น ๆ บอกว่าทีมงานกำลังรีวิวและจะแจ้งในแชทนี้ แล้วจบบทสนทนาอย่างอบอุ่น
+- ส่งครบแล้ว (สถานะรอทีมตรวจ) → แจ้งว่าทีมกำลังพิจารณาและจะแจ้งผลในแชทนี้ แล้วจบ
+- สถานะรอสร้างบัญชี → ชวนกดปุ่ม "สร้างบัญชี / เข้าสู่ระบบ HOOSE" ในการ์ด แล้วพิมพ์ "เสร็จสิ้น"
 
 ${RULES}`;
 }
@@ -239,13 +257,25 @@ function cleanHistory(rows: { role: string; content: string }[]): Msg[] {
 }
 
 const SORRY = 'ขอเวลาน้องฮูสเช็กแป๊บนึงนะคะ ลองพิมพ์มาอีกครั้งได้เลยค่ะ 🙏';
+const SORRY_FORMAL = 'ขออภัยค่ะ กรุณาพิมพ์ข้อความอีกครั้ง';
+export const sorryFor = (u: { status: string; profile_id?: string | null }) => (isMember(u) ? SORRY : SORRY_FORMAL);
+
+/** Recruiting voice guard: no emoji / decorative symbols, at most 2 sentences. */
+function formal(t: string): string {
+  const clean = t.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, '').replace(/[✓✔✅⬜☐•·]+/g, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+\n/g, '\n').trim();
+  const parts = clean.split(/(?<=ค่ะ|คะ|ครับ|[.!?])\s+/u).filter(Boolean);
+  if (parts.length <= 2) return clean;
+  // Keep the "เสร็จสิ้น" instruction if the model put it in a later sentence.
+  const finish = parts.findIndex(x => x.includes('เสร็จสิ้น'));
+  return (finish > 1 ? [parts[0], parts[finish]] : parts.slice(0, 2)).join(' ').trim();
+}
 
 /** Answers one text message. Stores both turns as chat memory. Returns the reply and whether to attach the form card. */
 export async function answer(db: SupabaseClient, u: LineUser, userText: string): Promise<{ text: string; card: 'form' | 'status' | null }> {
   const { data: past } = await db.from('line_messages').select('role, content')
     .eq('line_user_id', u.line_user_id).order('id', { ascending: false }).limit(HISTORY);
   const messages: Msg[] = [...cleanHistory((past || []).reverse()), { role: 'user', content: userText }];
-  const member = ['approved', 'active'].includes(u.status);
+  const member = isMember(u);
   const sys = member
     ? memberPrompt(u, await myProjects(db, u.line_user_id, u.profile_id || null), u.role === 'editor' ? await editingContext(db, u.line_user_id) : '')
     : applicantPrompt(u); // fixed for the whole tool loop
@@ -254,7 +284,7 @@ export async function answer(db: SupabaseClient, u: LineUser, userText: string):
   let dropBlocks = false;
   for (let step = 0; step < MAX_STEPS; step++) {
     let r;
-    try { r = await claude({ model: MODEL, max_tokens: 1024, system: sys, tools: TOOLS, messages }, dropBlocks); }
+    try { r = await claude({ model: MODEL, max_tokens: member ? 1024 : 400, system: sys, tools: TOOLS, messages }, dropBlocks); }
     catch (e) {
       // Safety net: if a thinking block ever fails Anthropic's prefix check, retry once with drop_block.
       if (!dropBlocks && /bound to a different conversation/.test((e as Error).message)) { dropBlocks = true; step--; console.error('line agent: retry with drop_block'); continue; }
@@ -268,7 +298,8 @@ export async function answer(db: SupabaseClient, u: LineUser, userText: string):
     for (const c of calls) results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(await runTool(db, u, c.name!, c.input || {}, extras)) });
     messages.push({ role: 'user', content: results });
   }
-  out = out || (extras.card ? 'ด้านล่างนี้เลยค่ะ 👇' : SORRY);
+  out = out || (extras.card ? (member ? 'ด้านล่างนี้เลยค่ะ 👇' : 'รายละเอียดอยู่ด้านล่างค่ะ') : sorryFor(u));
+  if (!member) out = formal(out);
   await db.from('line_messages').insert([
     { line_user_id: u.line_user_id, role: 'user', content: userText.slice(0, 4000) },
     { line_user_id: u.line_user_id, role: 'assistant', content: out.slice(0, 4000) }
