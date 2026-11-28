@@ -18,20 +18,20 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 type U = { line_user_id: string; display_name: string; full_name: string; role: string | null; status: string; position: string; portfolio_url: string; created_at: string; profile_id: string | null; interview_booked_at: string | null };
 
 function progress(u: U) {
-  const tick = (ok: boolean, label: string) => `${ok ? '✅' : '⬜'} ${label}`;
+  const tick = (ok: boolean, label: string) => `${ok ? '[เรียบร้อย]' : '[ยังไม่ครบ]'} ${label}`;
   const steps = [tick(!!u.role, 'เลือกบทบาท')];
   if (u.role === 'crew') steps.push(tick(!!u.full_name, 'ชื่อ'), tick(!!u.position, 'ตำแหน่ง'));
-  if (u.role === 'editor') steps.push('📝 กรอกใบสมัคร (Google Form)');
-  steps.push(tick(!!u.portfolio_url, 'ลิงก์ผลงาน'), '⬜ พิมพ์ "เสร็จสิ้น"');
+  if (u.role === 'editor') steps.push('- กรอกใบสมัคร (Google Form)');
+  steps.push(tick(!!u.portfolio_url, 'ลิงก์ผลงาน'), '- พิมพ์ "เสร็จสิ้น"');
   return steps.join('\n');
 }
 
 function nextStep(u: U) {
-  if (!u.role) return 'พิมพ์ "เมนู" แล้วเลือกบทบาทได้เลยค่ะ';
-  if (u.role === 'crew' && !u.full_name) return 'บอกชื่อ-นามสกุลมาในแชทนี้ได้เลยค่ะ';
-  if (u.role === 'crew' && !u.position) return 'บอกตำแหน่งที่ทำในกองถ่ายมาได้เลยค่ะ';
-  if (!u.portfolio_url) return 'ส่งลิงก์ผลงานมาในแชทนี้ แล้วพิมพ์ "เสร็จสิ้น" ค่ะ';
-  return 'ส่งครบแล้วพิมพ์ "เสร็จสิ้น" ได้เลยค่ะ';
+  if (!u.role) return 'กรุณาพิมพ์ "เมนู" เพื่อเลือกบทบาทค่ะ';
+  if (u.role === 'crew' && !u.full_name) return 'กรุณาพิมพ์ชื่อ-นามสกุลในแชทนี้ค่ะ';
+  if (u.role === 'crew' && !u.position) return 'กรุณาพิมพ์ตำแหน่งที่ทำในกองถ่ายค่ะ';
+  if (!u.portfolio_url) return 'กรุณาส่งลิงก์ผลงานในแชทนี้ แล้วพิมพ์ "เสร็จสิ้น" ค่ะ';
+  return 'หากส่งครบแล้ว กรุณาพิมพ์ "เสร็จสิ้น" ค่ะ';
 }
 
 /** The re-ask sent 10 minutes after the bot's last request, or '' when nothing is waiting on them. */
@@ -39,11 +39,11 @@ function reAsk(u: U, name: string) {
   const who = name ? `คุณ${name} ` : '';
   if (['new', 'applying'].includes(u.status)) {
     if (!u.role) return '';
-    return u.portfolio_url ? `${who}ส่งผลงานครบแล้วหรือยังคะ 😊 ถ้าครบแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้ได้เลยค่ะ` : `น้องฮูสยังรออยู่นะคะ 😊 ${nextStep(u)}`;
+    return u.portfolio_url ? `หาก${who}ส่งผลงานครบแล้ว กรุณาพิมพ์ "เสร็จสิ้น" ในแชทนี้ค่ะ` : nextStep(u);
   }
-  if (u.status === 'interview' && !u.interview_booked_at) return `${who}เลือกเวลานัดคุยกับทีมได้หรือยังคะ 🗓️ กดปุ่ม "เลือกเวลานัดคุย" ในการ์ดด้านบน นัดเสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ`;
-  if (u.status === 'onboarding') return `${who}อ่านเอกสารและกรอกแบบฟอร์มข้อมูลเรียบร้อยหรือยังคะ 📄 เสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ`;
-  if (u.status === 'approved' && !u.profile_id) return `${who}สร้างบัญชี HOOSE ได้หรือยังคะ ✨ กดปุ่ม "สร้างบัญชี / เข้าสู่ระบบ HOOSE" ในการ์ดด้านบน เสร็จแล้วพิมพ์ "เสร็จสิ้น" ในแชทนี้นะคะ`;
+  if (u.status === 'interview' && !u.interview_booked_at) return `กรุณากดปุ่ม "เลือกเวลานัดคุย" ในการ์ดด้านบน เมื่อนัดแล้วกรุณาพิมพ์ "เสร็จสิ้น" ในแชทนี้ค่ะ`;
+  if (u.status === 'onboarding') return `กรุณาอ่านเอกสารและกรอกแบบฟอร์มข้อมูล เมื่อเสร็จแล้วกรุณาพิมพ์ "เสร็จสิ้น" ในแชทนี้ค่ะ`;
+  if (u.status === 'approved' && !u.profile_id) return `กรุณากดปุ่ม "สร้างบัญชี / เข้าสู่ระบบ HOOSE" ในการ์ดด้านบน เมื่อเสร็จแล้วกรุณาพิมพ์ "เสร็จสิ้น" ในแชทนี้ค่ะ`;
   return '';
 }
 
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     if (!keyName && ['new', 'applying'].includes(u.status)) for (const [d, label] of [[5, '5d'], [3, '3d'], [1, '1d']] as const) {
       if (age >= d * DAY && age < (d + 2) * DAY) {
         keyName = `${label}@${anchorId}`;
-        body = `คุณ${name} ใบสมัครกับ HOOSE ยังไม่ครบนะคะ 🙏\n${progress(u)}\n${nextStep(u)}`;
+        body = `ใบสมัคร HOOSE ของคุณ${name} ยังไม่ครบค่ะ\n${progress(u)}\n${nextStep(u)}`;
         break;
       }
     }
