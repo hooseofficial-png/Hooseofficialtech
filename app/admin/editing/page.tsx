@@ -48,17 +48,7 @@ export default function Editing() {
     await fetch('/api/admin/editing/call?id=' + c.id, { method: 'DELETE' }); load();
   }
 
-  const card = (p: Pj, action: React.ReactNode) => (
-    <div key={p.id} style={{ borderBottom: '1px solid var(--line)', padding: '12px 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div className="between" style={{ gap: 10 }}>
-        <a href={p.url} target="_blank" rel="noreferrer" className="ell" style={{ fontWeight: 700, color: 'var(--ink)' }}>{p.name}</a>
-        {action}
-      </div>
-      <span className="mut" style={{ fontSize: 12 }}>
-        {p.total > 1 ? `ยังไม่ส่ง ${p.open}/${p.total} คลิป` : p.status} · <span style={{ color: p.state !== 'ok' ? 'var(--blue)' : undefined, fontWeight: p.state !== 'ok' ? 700 : 400 }}>Deadline {dueText(p.due)}</span>
-        {p.assignees.length ? ' · ' + p.assignees.map(a => a.username).join(', ') : ''}{p.refs.length ? ` · REF ${p.refs.length}` : ''}
-      </span>
-    </div>);
+  const card = (p: Pj, action: React.ReactNode) => <ProjectCard key={p.id} p={p} action={action} />;
 
   return (
     <AdminShell title="ตัดต่อ · ClickUp" denied={denied} sub={d?.configured ? <span className="mut" style={{ fontSize: 13 }}>นักตัดต่อใน LINE OA {d.editorsOnLine} คน</span> : null}>
@@ -66,15 +56,14 @@ export default function Editing() {
       : !d ? <div className="empty">กำลังดึงโปรเจกต์จาก ClickUp…</div>
       : !d.configured ? <div className="card"><b>ยังไม่ได้เชื่อม ClickUp</b><span className="mut">ใส่ ClickUp API Token ใน Vercel แล้ว Redeploy</span></div>
       : <>
-        <section className="card" style={{ gap: 8 }}>
-          <div className="between" style={{ gap: 8 }}>
-            <div><b>แจ้งเตือนอัตโนมัติเมื่อมีความเปลี่ยนแปลง</b>
-              <div className="mut" style={{ fontSize: 12 }}>{d.webhook ? 'เชื่อมแล้ว · ClickUp แจ้งทุกครั้งที่งานเปลี่ยน แล้วระบบตรวจกำหนดส่งให้' : 'ยังไม่เชื่อม · กดเชื่อมเพื่อให้ ClickUp แจ้งระบบเมื่องานเปลี่ยน'}</div></div>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="btn sm" disabled={!!busy} onClick={connect}>{d.webhook ? 'เชื่อมใหม่' : 'เชื่อม ClickUp'}</button>
-              <button className="btn p sm" disabled={!!busy} onClick={check}>{busy === 'check' ? 'กำลังตรวจ…' : 'ตรวจตอนนี้'}</button>
-            </div>
+        <section className="card" style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '14px 18px' }}>
+          <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 99, flex: '0 0 10px', background: d.webhook ? 'var(--blue)' : 'var(--mut-2)', boxShadow: d.webhook ? '0 0 0 4px var(--blue-bg)' : 'none' }} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <b style={{ fontSize: 14 }}>{d.webhook ? 'ซิงก์กับ ClickUp อยู่' : 'ยังไม่ได้ซิงก์กับ ClickUp'}</b>
+            <div className="mut" style={{ fontSize: 12 }}>{d.webhook ? 'งานเปลี่ยนเมื่อไหร่ ระบบตรวจ Deadline และแจ้งใน LINE ให้ทันที' : 'กด “เชื่อม ClickUp” ครั้งเดียว ให้ระบบรู้ทันทีเมื่องานเปลี่ยน'}</div>
           </div>
+          <button className="btn sm ghost" disabled={!!busy} onClick={connect}>{d.webhook ? 'เชื่อมใหม่' : 'เชื่อม ClickUp'}</button>
+          <button className="btn p sm" disabled={!!busy} onClick={check}>{busy === 'check' ? 'กำลังตรวจ…' : 'ตรวจตอนนี้'}</button>
         </section>
         <Grid>
           <Tile label="โปรเจกต์ยังไม่มีคนรับ" value={d.unassigned.length} hot={d.unassigned.length > 0} onClick={() => setTab('new')} />
@@ -89,8 +78,8 @@ export default function Editing() {
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
         </div>
 
-        {tab === 'new' && <section className="card" style={{ gap: 0, paddingTop: 4 }}>
-          {!d.unassigned.length ? <div className="empty">ทุกโปรเจกต์มีคนรับแล้ว 🎉</div> : d.unassigned.map(p => card(p,
+        {tab === 'new' && <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+          {!d.unassigned.length ? <div className="empty" style={{ gridColumn: '1 / -1' }}>ทุกโปรเจกต์มีคนรับแล้ว 🎉</div> : d.unassigned.map(p => card(p,
             p.call?.status === 'open'
               ? <span className="row" style={{ gap: 6 }}><span className="chip lb">{p.call.reason === 'reassign' ? 'หาคนแทน' : 'ประกาศแล้ว'} · ส่ง {p.call.sent_to} คน</span><button className="btn sm ghost" onClick={() => cancel(p.call!)}>ยกเลิก</button></span>
               : <button className="btn p sm" onClick={() => { setCompose(p); setDetail(p.description); setRate(''); }}>ประกาศหานักตัดต่อ?</button>))}
@@ -109,9 +98,9 @@ export default function Editing() {
             </div>
           </section>)}
 
-        {tab === 'doing' && <section className="card" style={{ gap: 0, paddingTop: 4 }}>
-          {!d.inProgress.length ? <div className="empty">ไม่มีโปรเจกต์ค้าง</div> : d.inProgress.map(p => card(p,
-            <span className={p.state === 'overdue' ? 'chip b' : p.state === 'due_soon' ? 'chip lb' : 'chip o'}>{p.state === 'overdue' ? 'เลยกำหนด' : p.state === 'due_soon' ? 'ใกล้ครบ' : 'กำลังทำ'}</span>))}
+        {tab === 'doing' && <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+          {!d.inProgress.length ? <div className="empty" style={{ gridColumn: '1 / -1' }}>ไม่มีโปรเจกต์ค้าง</div> : d.inProgress.map(p => card(p,
+            null))}
         </section>}
 
         {tab === 'team' && <section className="card" style={{ padding: 0 }}><div className="tblw"><table className="tbl">
@@ -132,5 +121,52 @@ export default function Editing() {
         </section>}
       </>}
     </AdminShell>
+  );
+}
+
+const initials = (n: string) => n.replace(/\(.*?\)/g, '').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+/** One ClickUp project: clip progress, deadline pill, people, REF links, and the action for it. */
+function ProjectCard({ p, action }: { p: Pj; action: React.ReactNode }) {
+  const done = p.total - p.open;
+  const pct = Math.round(done / p.total * 100);
+  const pill = p.state === 'overdue'
+    ? { bg: 'var(--blue)', fg: '#fff', label: 'เลยกำหนด' }
+    : p.state === 'due_soon' ? { bg: 'var(--blue-bg)', fg: 'var(--blue)', label: 'ใกล้ครบกำหนด' } : null;
+  return (
+    <article className="card" style={{ gap: 12, padding: 16, borderColor: p.state === 'overdue' ? 'var(--blue)' : undefined }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0 }}>
+          <a href={p.url} target="_blank" rel="noreferrer" style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 16, color: 'var(--ink)', lineHeight: 1.3, display: 'block' }}>{p.name}</a>
+          <span className="mut" style={{ fontSize: 12 }}>{p.status}</span>
+        </div>
+        {pill && <span style={{ background: pill.bg, color: pill.fg, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>{pill.label}</span>}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+          <span className="mut">{p.total > 1 ? `ส่งแล้ว ${done}/${p.total} คลิป` : p.open ? 'ยังไม่ส่ง' : 'ส่งแล้ว'}</span>
+          <b style={{ color: p.state === 'ok' ? 'var(--ink-2)' : 'var(--blue)' }}>⏰ {dueText(p.due)}</b>
+        </div>
+        <div style={{ height: 8, background: 'var(--soft)', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{ width: pct + '%', height: '100%', background: 'var(--blue)', borderRadius: 99, transition: 'width .4s' }} />
+        </div>
+        {p.total > 1 && p.open > 0 && <span className="mut ell" style={{ fontSize: 11 }}>ค้าง: {p.openNames.slice(0, 6).join(' · ')}{p.openNames.length > 6 ? ' …' : ''}</span>}
+      </div>
+
+      {p.description && <p className="mut" style={{ fontSize: 13, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.description}</p>}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {p.assignees.length ? <>
+            <div style={{ display: 'flex' }}>{p.assignees.slice(0, 3).map((a, i) => (
+              <span key={a.id} title={a.username} style={{ width: 28, height: 28, borderRadius: 99, background: 'var(--blue-bg)', color: 'var(--blue)', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid var(--paper)', marginLeft: i ? -8 : 0 }}>{initials(a.username)}</span>))}</div>
+            <span className="ell" style={{ fontSize: 12, color: 'var(--ink-2)' }}>{p.assignees.map(a => a.username).join(', ')}</span>
+          </> : <span className="mut" style={{ fontSize: 12 }}>ยังไม่มีคนรับ</span>}
+          {p.refs.slice(0, 2).map((u, i) => <a key={u} href={u} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', background: 'var(--blue-bg)', padding: '3px 8px', borderRadius: 99 }}>▶ REF{p.refs.length > 1 ? ' ' + (i + 1) : ''}</a>)}
+        </div>
+        {action}
+      </div>
+    </article>
   );
 }
