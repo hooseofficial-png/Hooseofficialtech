@@ -491,3 +491,4 @@ a,.link-btn{transition:color .15s,opacity .15s}
 .join-strip .btn.p[disabled]{background:rgba(255,255,255,.18);color:rgba(255,255,255,.6);border-color:transparent}
 .join-strip .btn.p .ripple{background:#0E0E1A}
 .join-strip .err{background:rgba(255,255,255,.08);color:#fff}
+.dash a,.dash a:hover{text-decoration:none}

@@ -5,26 +5,27 @@ import { editingTasks } from '@/lib/clickup';
 import { projectsOf } from '@/lib/editing';
 import { announceProject } from '@/lib/editing-engine';
 
-// Admin · announce one ClickUp project to approved editors on LINE (description, REF links and deadline
-// from ClickUp). First to tap "รับโปรเจกต์นี้" gets it.
+// Admin · Open Call on LINE for a ClickUp project's remaining clips: description, REF links and deadline come
+// straight from ClickUp (nothing to fill in). Current assignees are skipped. Nothing is written to ClickUp.
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const b = await req.json().catch(() => ({})) as { project_id?: string; detail?: string; rate?: string; reassign?: boolean };
+  const b = await req.json().catch(() => ({})) as { project_id?: string };
   const p = projectsOf(await editingTasks(), Date.now(), true).find(x => x.id === b.project_id);
   if (!p) return NextResponse.json({ error: 'ไม่พบโปรเจกต์ใน ClickUp' }, { status: 404 });
-  if (p.assignees.length && !b.reassign) return NextResponse.json({ error: 'โปรเจกต์นี้มีคนตัดแล้วใน ClickUp' }, { status: 409 });
+  if (!p.open.length) return NextResponse.json({ error: 'โปรเจกต์นี้ไม่มีคลิปค้างแล้ว' }, { status: 400 });
   const db = sbAdmin();
+  const reassign = p.assignees.length > 0;
   // Looking for a replacement (LINE only): the current assignees don't get the call. ClickUp is changed by the team.
   let exclude: string[] = [];
-  if (b.reassign && p.assignees.length) {
+  if (reassign) {
     const { data } = await db.from('line_users').select('line_user_id').in('clickup_user_id', p.assignees.map(a => a.id));
     exclude = (data || []).map(x => x.line_user_id);
   }
-  const r = await announceProject(db, p, { detail: b.detail, rate: b.rate, reason: b.reassign ? 'reassign' : 'new', exclude, createdBy: admin });
+  const r = await announceProject(db, p, { reason: reassign ? 'reassign' : 'new', exclude, createdBy: admin });
   return 'error' in r && r.error ? NextResponse.json({ error: r.error }, { status: 400 }) : NextResponse.json(r);
 }
 

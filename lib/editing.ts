@@ -46,7 +46,7 @@ export type Project = {
   clips: CuTask[];               // subtasks (empty when the project is a single task)
   open: CuTask[];                // clips not finished (or the project itself when it has no clips)
   assignees: { id: number; username: string }[];
-  done: boolean; date_updated: number; date_done: number | null;
+  done: boolean; date_updated: number; date_done: number | null; date_created: number;
 };
 
 const REF_RE = /https?:\/\/[^\s)>\]"']+/g;
@@ -75,7 +75,7 @@ export function projectsOf(tasks: CuTask[], now = Date.now(), includeAll = false
       id: r.id, name: r.name, url: r.url, status: r.status, description: r.description,
       due: r.due_date || (dues.length ? Math.max(...dues) : null), clips, open,
       assignees: Array.from(people.entries()).map(([id, username]) => ({ id, username })),
-      done, date_updated: Math.max(r.date_updated, ...clips.map(c => c.date_updated)), date_done: done ? (r.date_done || Math.max(0, ...clips.map(c => c.date_done || 0)) || null) : null
+      done, date_created: r.date_created, date_updated: Math.max(r.date_updated, ...clips.map(c => c.date_updated)), date_done: done ? (r.date_done || Math.max(0, ...clips.map(c => c.date_done || 0)) || null) : null
     });
   }
   return out.sort((a, b) => (a.due || 9e15) - (b.due || 9e15));

@@ -16,7 +16,7 @@ export default function AdminShell({ title, sub, denied, children }: { title: st
   const path = usePathname();
   return (
     <><TopBar label="HOOSE · Super Dashboard" />
-      <main className="wrap">
+      <main className="wrap dash">
         <nav className="seg" style={{ alignSelf: 'flex-start', overflowX: 'auto', maxWidth: '100%' }} aria-label="แดชบอร์ด">
           {NAV.map(([href, label]) => {
             const on = href === '/admin' ? path === '/admin' : path?.startsWith(href);

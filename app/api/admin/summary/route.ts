@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/admin';
 import { clickupConfigured, currentTasks, editingTasks, stage } from '@/lib/clickup';
+import { projectsOf } from '@/lib/editing';
 
 // Admin · numbers for the overview and analytics pages: editing (ClickUp), production and recruiting (Supabase).
 export const dynamic = 'force-dynamic';
@@ -64,9 +65,10 @@ export async function GET() {
       for (const t of tasks) if (stage(t) === 'done' && t.date_done && now - t.date_done < 30 * DAY) for (const a of t.assignees) per.set(a.username, (per.get(a.username) || 0) + 1);
       editing = {
         configured: true, open: open.length,
-        unassigned: open.filter(t => !t.assignees.length).length,
-        overdue: open.filter(t => t.due_date && t.due_date < now).length,
-        dueSoon: open.filter(t => t.due_date && t.due_date >= now && t.due_date - now < 3 * DAY).length,
+        // Project level (ClickUp parent task + clips), like the editing page
+        unassigned: projectsOf(tasks, now).filter(p => !p.assignees.length).length,
+        overdue: projectsOf(tasks, now).filter(p => p.due && p.due < now).length,
+        dueSoon: projectsOf(tasks, now).filter(p => p.due && p.due >= now && p.due - now < 3 * DAY).length,
         review: open.filter(t => stage(t) === 'review').length,
         done30: tasks.filter(t => stage(t) === 'done' && t.date_done && now - t.date_done < 30 * DAY).length,
         perEditor: Array.from(per.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value),
