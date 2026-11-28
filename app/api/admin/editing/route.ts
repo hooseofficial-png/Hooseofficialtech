@@ -28,7 +28,7 @@ export async function GET() {
   for (const c of calls || []) if (!callBy.has(c.clickup_task_id)) callBy.set(c.clickup_task_id, c);
   const lineByCu = new Map((editors || []).filter(e => e.clickup_user_id).map(e => [Number(e.clickup_user_id), e]));
   const projects = projectsOf(tasks, now).map(p => ({
-    id: p.id, name: p.name, url: p.url, status: p.status, due: p.due, description: p.description.slice(0, 600), refs: refLinks(p.description),
+    id: p.id, name: p.name, url: p.url, status: p.status, due: p.due, description: p.description.slice(0, 600), refs: refLinks(p.markdown).map(l => l.url),
     total: Math.max(1, p.clips.length), open: p.open.length, openNames: p.open.map(t => t.name).slice(0, 12),
     assignees: p.assignees, call: callBy.get(p.id) || null,
     state: p.due && p.due < now ? 'overdue' : p.due && p.due - now <= 3 * 864e5 ? 'due_soon' : 'ok'

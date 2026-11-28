@@ -95,6 +95,15 @@ async function handle(db: ReturnType<typeof sbAdmin>, ev: LineEvent) {
     if (MENU.test(msg)) { await reply(ev.replyToken, [welcomeCard(u.display_name)]); return; }
     if (APPLY.test(msg)) { await reply(ev.replyToken, [u.role === 'crew' && ['new', 'applying'].includes(u.status) ? text(crewPrompt(u)) : u.role ? nextStepCard(u.role) : welcomeCard(u.display_name)]); return; }
     if (STATUS.test(msg) && ['approved', 'active'].includes(u.status)) { await reply(ev.replyToken, [quick(statusCard(u))]); return; }
+    // Typed "รับงานนี้": take the newest Open Call still open for this editor.
+    if (/^รับงาน(นี้)?\s*(ค่ะ|ครับ|คะ|นะคะ)?[!！.]*$/.test(msg) && u.role === 'editor') {
+      const { data: calls } = await db.from('editing_calls').select('id, exclude_line_user_id').eq('status', 'open')
+        .gte('created_at', new Date(Date.now() - 14 * 864e5).toISOString()).order('created_at', { ascending: false }).limit(10);
+      const c = (calls || []).find(x => !(x.exclude_line_user_id || '').split(',').includes(userId));
+      if (c) { await claimEditing(db, u, c.id, ev.replyToken); return; }
+      await reply(ev.replyToken, [text('ตอนนี้ยังไม่มีงานที่เปิดรับอยู่ค่ะ 🙏 มีงานใหม่เมื่อไหร่ น้องฮูสจะส่งมาให้ก่อนเลยนะคะ')]);
+      return;
+    }
 
     // Application intake: fixed steps, no AI needed.
     const out = await intake(db, u, msg);

@@ -26,8 +26,8 @@ async function editorsOnLine(db: SupabaseClient): Promise<Editor[]> {
 export async function announceProject(db: SupabaseClient, p: Project, o: { detail?: string; rate?: string; reason?: 'new' | 'reassign'; exclude?: string[]; createdBy?: string | null }) {
   const { data: openCall } = await db.from('editing_calls').select('id').eq('clickup_task_id', p.id).eq('status', 'open').maybeSingle();
   if (openCall) return { error: 'โปรเจกต์นี้ประกาศอยู่แล้ว รอคนกดรับ' };
-  let description = p.description;
-  if (!description) { try { const t = await getTask(p.id); description = (t.text_content || t.description || '').trim(); } catch { /* keep empty */ } }
+  let description = p.description; let markdown = p.markdown;
+  if (!markdown) { try { const t = await getTask(p.id); description = (t.text_content || t.description || '').trim(); markdown = (t.markdown_description || '').trim(); } catch { /* keep empty */ } }
   const detail = (o.detail ?? description).trim();
   const exclude = new Set(o.exclude || []);
   const to = (await editorsOnLine(db)).map(e => e.line_user_id).filter(id => !exclude.has(id));
@@ -39,7 +39,7 @@ export async function announceProject(db: SupabaseClient, p: Project, o: { detai
   }).select('id, task_name, due_date, detail, rate, clips, reason').single();
   if (error) return { error: error.message };
   try {
-    const msg = projectCallCard({ ...call, refs: refLinks(description), left: p.clips.length ? p.open.map(t => t.name) : [] });
+    const msg = projectCallCard({ ...call, links: refLinks(markdown || description), url: p.url, overdue: !!p.due && p.due < Date.now() });
     for (let i = 0; i < to.length; i += 500) await multicast(to.slice(i, i + 500), [msg]);
   } catch (e) {
     await db.from('editing_calls').update({ status: 'cancelled' }).eq('id', call.id);

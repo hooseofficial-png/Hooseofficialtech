@@ -23,9 +23,10 @@ export type CuTask = {
   status: string; status_type: string; // open | custom | done | closed
   assignees: CuUser[]; due_date: number | null; date_created: number; date_done: number | null; date_updated: number;
   list: string; description: string;
+  markdown: string; // description with links kept ([text](url)); text_content drops the URLs
 };
 
-type Raw = { id: string; name: string; url: string; parent: string | null; status: { status: string; type: string }; text_content?: string; description?: string;
+type Raw = { id: string; name: string; url: string; parent: string | null; status: { status: string; type: string }; text_content?: string; description?: string; markdown_description?: string;
   assignees: CuUser[]; due_date: string | null; date_created: string; date_done: string | null; date_closed: string | null; date_updated: string; list: { name: string } };
 
 /** All tasks (incl. subtasks and closed) of the editing lists. Parent names filled in for subtasks. */
@@ -33,7 +34,7 @@ export async function editingTasks(): Promise<CuTask[]> {
   const all: Raw[] = [];
   for (const list of EDIT_LISTS) {
     for (let page = 0; page < 20; page++) {
-      const j = await cu(`/list/${list}/task?include_closed=true&subtasks=true&page=${page}`);
+      const j = await cu(`/list/${list}/task?include_closed=true&subtasks=true&include_markdown_description=true&page=${page}`);
       all.push(...(j.tasks || []));
       if (j.last_page !== false && (j.tasks || []).length < 100) break;
     }
@@ -44,12 +45,12 @@ export async function editingTasks(): Promise<CuTask[]> {
     status: (t.status?.status || '').trim(), status_type: t.status?.type || 'open',
     assignees: (t.assignees || []).map(a => ({ id: a.id, username: a.username, email: a.email, profilePicture: a.profilePicture })),
     due_date: t.due_date ? Number(t.due_date) : null, date_created: Number(t.date_created), date_done: t.date_done || t.date_closed ? Number(t.date_done || t.date_closed) : null,
-    date_updated: Number(t.date_updated), list: t.list?.name || '', description: (t.text_content || t.description || '').trim()
+    date_updated: Number(t.date_updated), list: t.list?.name || '', description: (t.text_content || t.description || '').trim(), markdown: (t.markdown_description || '').trim()
   }));
 }
 
 export async function getTask(id: string) {
-  return cu(`/task/${encodeURIComponent(id)}`) as Promise<Raw & { description?: string }>;
+  return cu(`/task/${encodeURIComponent(id)}?include_markdown_description=true`) as Promise<Raw & { description?: string }>;
 }
 
 /** Workspace members (editors are guests). */
