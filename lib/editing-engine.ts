@@ -1,15 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { addAssignee, editingTasks, getTask, removeAssignees } from './clickup';
-import { clickupIdFor, projectsOf, refLinks, type Project } from './editing';
+import { editingTasks, getTask } from './clickup';
+import { projectsOf, refLinks, type Project } from './editing';
 import { multicast, push } from './line';
-import { dueSoonCard, projectAssignedCard, projectCallCard, projectDoneCard, reassignedCard } from './line-cards';
+import { dueSoonCard, projectAssignedCard, projectCallCard, projectDoneCard } from './line-cards';
 
-// Editing automation, run only when something happens (ClickUp webhook) or when an admin presses
-// "ตรวจตอนนี้" — no fixed schedule.
-//  • due within 3 days  → each assignee gets one summary per project: clips not delivered yet
-//  • past due, not done → assignees removed from the open clips in ClickUp, told politely,
-//                          and the project is re-announced on LINE to the other editors
-//  • project finished    → thank-you to everyone who worked on it
+// Editing ↔ LINE. ClickUp is the operating system and is only READ here, never written:
+//  • new project        → admin announces it on LINE from the dashboard
+//  • editor taps "รับ"   → recorded here; the team adds them in ClickUp (dashboard shows who to add)
+//  • due within 3 days  → each ClickUp assignee gets one LINE summary per project (clips not sent yet)
+//  • past due            → shown on the dashboard; the team decides in ClickUp and may re-announce on LINE
+//  • project finished    → thank-you on LINE
+// Runs when ClickUp reports a change (webhook).
 
 const DAY = 864e5;
 
@@ -47,29 +48,16 @@ export async function announceProject(db: SupabaseClient, p: Project, o: { detai
   return { ok: true, sent: to.length };
 }
 
-/** Editor tapped "รับโปรเจกต์นี้": first one wins; assigned to the project and its open clips in ClickUp. */
+/** Editor tapped "รับโปรเจกต์นี้": first one wins. Recorded for the team, who add them in ClickUp. */
 export async function claimProject(db: SupabaseClient, lineUserId: string, callId: string) {
   const { data: c } = await db.from('editing_calls').select('exclude_line_user_id').eq('id', callId).maybeSingle();
   if (c?.exclude_line_user_id?.split(',').includes(lineUserId)) return { taken: true as const };
   const now = new Date().toISOString();
-  const { data: won } = await db.from('editing_calls').update({ status: 'assigned', assigned_line_user_id: lineUserId, assigned_at: now })
+  const { data: won } = await db.from('editing_calls').update({ status: 'assigned', assigned_line_user_id: lineUserId, assigned_at: now, clickup_assigned: false })
     .eq('id', callId).eq('status', 'open').select('id, clickup_task_id, task_name, due_date, clips').maybeSingle();
   if (!won) return { taken: true as const };
-  let inClickUp = false;
-  try {
-    const cid = await clickupIdFor(db, lineUserId);
-    if (cid) {
-      const p = projectsOf(await editingTasks(), Date.now(), true).find(x => x.id === won.clickup_task_id);
-      const ids = Array.from(new Set([won.clickup_task_id, ...(p?.open || []).map(t => t.id)]));
-      for (const id of ids) await addAssignee(id, cid);
-      inClickUp = true;
-    }
-  } catch (e) { console.error('clickup assign', (e as Error).message); }
-  await db.from('editing_calls').update({ clickup_assigned: inClickUp }).eq('id', won.id);
-  if (!inClickUp) await db.from('line_users').update({ needs_attention: true, attention_at: now,
-    attention_note: `รับโปรเจกต์ตัด "${won.task_name}" แล้ว แต่ยัง assign ใน ClickUp ไม่ได้ (ยังไม่ได้ผูกบัญชี ClickUp)` }).eq('line_user_id', lineUserId);
   await db.from('line_messages').insert({ line_user_id: lineUserId, role: 'assistant', content: `[รับโปรเจกต์ตัด] ${won.task_name}` });
-  return { taken: false as const, card: projectAssignedCard(won, `https://app.clickup.com/t/${won.clickup_task_id}`, inClickUp) };
+  return { taken: false as const, card: projectAssignedCard(won, `https://app.clickup.com/t/${won.clickup_task_id}`, false) };
 }
 
 /** Deadline, overdue and finished checks for every current project (or only one). */
@@ -81,12 +69,8 @@ export async function runChecks(db: SupabaseClient, onlyProject?: string) {
   const byCu = new Map(editors.filter(e => e.clickup_user_id).map(e => [Number(e.clickup_user_id), e]));
   const { data: sent } = await db.from('line_reminders').select('line_user_id, clickup_task_id, kind').gte('sent_at', new Date(now - 180 * DAY).toISOString());
   const already = new Set((sent || []).map(r => `${r.line_user_id}|${r.clickup_task_id}|${r.kind}`));
-  // Who took a project after its deadline had passed (a re-announcement): never take it back from them.
-  const { data: lateTakers } = await db.from('editing_calls').select('clickup_task_id, assigned_at, due_date').eq('status', 'assigned');
-  const takenAfterDue = new Map((lateTakers || []).filter(c => c.assigned_at && (!c.due_date || c.assigned_at > c.due_date))
-    .map(c => [c.clickup_task_id, c.due_date ? +new Date(c.due_date) : 0]));
   const log: { line_user_id: string; clickup_task_id: string; kind: string }[] = [];
-  const out = { dueSoon: 0, reassigned: 0, thanked: 0, errors: [] as string[] };
+  const out = { dueSoon: 0, thanked: 0, errors: [] as string[] };
   const once = (e: Editor, key: string, kind: string) => {
     const k = `${e.line_user_id}|${key}|${kind}`;
     if (already.has(k)) return false;
@@ -105,27 +89,7 @@ export async function runChecks(db: SupabaseClient, onlyProject?: string) {
       }
       if (!p.due || !p.assignees.length) continue;
       const key = `${p.id}@${p.due}`;
-      // Taken after the deadline had passed: wait until the team sets a new deadline in ClickUp.
-      if (p.due < now && takenAfterDue.has(p.id) && p.due <= (takenAfterDue.get(p.id) || 0) + 60e3) continue;
-      if (p.due < now) {
-        // Overdue: take it back from the current assignees and look for someone else right away.
-        const removed = p.assignees.map(a => a.id);
-        for (const t of [{ id: p.id, assignees: p.assignees }, ...p.open]) {
-          const ids = t.assignees.map(a => a.id).filter(id => removed.includes(id));
-          if (ids.length) await removeAssignees(t.id, ids);
-        }
-        const excluded: string[] = [];
-        for (const id of removed) {
-          const e = byCu.get(id); if (!e) continue;
-          excluded.push(e.line_user_id);
-          if (once(e, key, 'overdue')) await push(e.line_user_id, [reassignedCard(p, nameOf(e))]);
-        }
-        await db.from('editing_calls').update({ status: 'cancelled' }).eq('clickup_task_id', p.id).eq('status', 'open');
-        const r = await announceProject(db, p, { reason: 'reassign', exclude: excluded });
-        if ('error' in r && r.error) out.errors.push(`${p.name}: ${r.error}`);
-        out.reassigned++;
-        continue;
-      }
+      if (p.due < now) continue; // overdue: shown on the dashboard, the team decides in ClickUp
       if (p.due - now <= 3 * DAY) {
         for (const a of p.assignees) {
           const e = byCu.get(a.id); if (!e) continue;

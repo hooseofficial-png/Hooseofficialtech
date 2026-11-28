@@ -17,9 +17,9 @@ export async function GET() {
   try {
     loaded = await Promise.all([
       editingTasks(), members(),
-      db.from('editing_calls').select('id, clickup_task_id, task_name, status, reason, sent_to, assigned_line_user_id, assigned_at, clickup_assigned, created_at').order('created_at', { ascending: false }).limit(200),
+      db.from('editing_calls').select('id, clickup_task_id, task_name, status, reason, sent_to, assigned_line_user_id, assigned_at, clickup_assigned, created_at, line_users!editing_calls_assigned_line_user_id_fkey(full_name, display_name, clickup_user_id)').order('created_at', { ascending: false }).limit(200),
       db.from('line_users').select('line_user_id, full_name, display_name, clickup_user_id, status, following').eq('role', 'editor').in('status', ['approved', 'active']),
-      getSetting(db, 'clickup_webhook_id')
+      getSetting(db, 'clickup_webhook_secret')
     ]);
   } catch (e) { return NextResponse.json({ error: 'ดึงข้อมูล ClickUp ไม่สำเร็จ: ' + (e as Error).message.slice(0, 200) }, { status: 502 }); }
   const [tasks, team, { data: calls }, { data: editors }, webhook] = loaded;
@@ -45,6 +45,12 @@ export async function GET() {
     doneRecent: done, people,
     editorsOnLine: (editors || []).filter(e => e.following).length,
     unlinkedEditors: (editors || []).filter(e => !e.clickup_user_id).map(e => ({ line_user_id: e.line_user_id, name: e.full_name || e.display_name })),
-    reassigned: (calls || []).filter(c => c.reason === 'reassign' && now - +new Date(c.created_at) < 14 * 864e5).length
+    // Editors who accepted on LINE but are not on the ClickUp project yet: the team adds them in ClickUp.
+    toAddInClickUp: (calls || []).filter(c => c.status === 'assigned' && c.assigned_at && now - +new Date(c.assigned_at) < 30 * 864e5).flatMap(c => {
+      const p = projectsOf(tasks, now, true).find(x => x.id === c.clickup_task_id);
+      const who = c.line_users as unknown as { full_name: string; display_name: string; clickup_user_id: number | null } | null;
+      if (!p || p.done || (who?.clickup_user_id && p.assignees.some(a => a.id === Number(who.clickup_user_id)))) return [];
+      return [{ project: p.name, url: p.url, name: who?.full_name || who?.display_name || 'นักตัดต่อ', at: c.assigned_at }];
+    })
   });
 }

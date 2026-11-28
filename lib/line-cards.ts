@@ -248,7 +248,7 @@ export function projectAssignedCard(c: { task_name: string; due_date: string | n
   return card(`ได้โปรเจกต์ ${c.task_name} แล้ว`, 'โปรเจกต์นี้เป็นของคุณแล้วค่ะ 🎉', [
     `${c.task_name}${c.clips > 1 ? ` · ${c.clips} คลิป` : ''}`,
     '⏰ Deadline: ' + thDay(c.due_date ? +new Date(c.due_date) : null),
-    inClickUp ? 'เปิด ClickUp เพื่อดูรายละเอียดทุกคลิปและอัปเดตสถานะได้เลยค่ะ' : 'ทีมงานจะส่งคำเชิญ ClickUp ให้ แล้วจะเห็นงานในนั้นค่ะ'
+    inClickUp ? 'เปิด ClickUp เพื่อดูรายละเอียดทุกคลิปและอัปเดตสถานะได้เลยค่ะ' : 'ทีมงานจะใส่ชื่อคุณในโปรเจกต์บน ClickUp ให้ แล้วจะเห็นทุกคลิปในนั้นค่ะ'
   ], inClickUp ? [{ label: 'เปิดโปรเจกต์ใน ClickUp', uri: url, primary: true }] : [], 'HOOSE · งานตัดต่อ');
 }
 
