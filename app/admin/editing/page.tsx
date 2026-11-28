@@ -10,7 +10,7 @@ type Pj = { id: string; name: string; url: string; status: string; due: number |
 type P = { id: number; username: string; email: string; line: { line_user_id: string } | null;
   stats: { active: number; todo: number; review: number; overdue: number; dueSoon: number; done30: number; onTime: number | null } };
 type D = { configured: boolean; webhook: boolean; hiddenOld: number; unassigned: Pj[]; inProgress: Pj[]; doneRecent: { id: string; name: string; url: string; total: number; date_done: number }[];
-  people: P[]; editorsOnLine: number; unlinkedEditors: { line_user_id: string; name: string }[]; reassigned: number };
+  people: P[]; editorsOnLine: number; unlinkedEditors: { line_user_id: string; name: string }[]; toAddInClickUp: { project: string; url: string; name: string; at: string }[] };
 
 const dueText = (ms: number | null) => {
   if (!ms) return 'ไม่กำหนดส่ง';
@@ -23,7 +23,7 @@ const dueText = (ms: number | null) => {
 export default function Editing() {
   const [d, setD] = useState<D | null>(null); const [denied, setDenied] = useState(false); const [err, setErr] = useState('');
   const [tab, setTab] = useState<'new' | 'doing' | 'team' | 'done'>('new');
-  const [compose, setCompose] = useState<Pj | null>(null); const [detail, setDetail] = useState(''); const [rate, setRate] = useState(''); const [busy, setBusy] = useState('');
+  const [compose, setCompose] = useState<Pj | null>(null); const [reassign, setReassign] = useState(false); const [detail, setDetail] = useState(''); const [rate, setRate] = useState(''); const [busy, setBusy] = useState('');
   const load = () => fetch('/api/admin/editing').then(async r => {
     if (r.status === 403 || r.status === 401) { setDenied(true); return; }
     const j = await r.json().catch(() => ({})); if (!r.ok) { setErr(j.error || 'โหลดไม่สำเร็จ'); return; } setErr(''); setD(j);
@@ -37,12 +37,9 @@ export default function Editing() {
     toast(r.ok ? ok(j) : (j.error || 'ไม่สำเร็จ')); if (r.ok) load();
     return r.ok;
   }
-  const announce = async () => { if (compose && await post('/api/admin/editing/call', { project_id: compose.id, detail, rate }, j => `ประกาศแล้ว · ส่งถึงนักตัดต่อ ${j.sent} คน`, 'call')) setCompose(null); };
-  const check = () => {
-    if (!confirm('ตรวจทุกโปรเจกต์ตอนนี้?\n• ใกล้ครบกำหนด → แจ้งคนที่รับงาน\n• เลยกำหนด → เอาคนออกจาก ClickUp แล้วประกาศหาใหม่ทันที\n• เสร็จแล้ว → ส่งคำขอบคุณ')) return;
-    post('/api/admin/editing/check', {}, j => `ตรวจแล้ว · ใกล้ครบ ${j.dueSoon} · ส่งต่อใหม่ ${j.reassigned} · ขอบคุณ ${j.thanked}${(j.errors as string[])?.length ? ' · มีบางอันไม่สำเร็จ' : ''}`, 'check');
-  };
-  const connect = () => post('/api/admin/editing/webhook', {}, () => 'เชื่อม ClickUp อัตโนมัติแล้ว', 'hook');
+  const announce = async () => { if (compose && await post('/api/admin/editing/call', { project_id: compose.id, detail, rate, reassign }, j => `ประกาศใน LINE แล้ว · ส่งถึงนักตัดต่อ ${j.sent} คน`, 'call')) setCompose(null); };
+  const connect = () => post('/api/admin/editing/webhook', {}, () => 'เชื่อม ClickUp แล้ว', 'hook');
+  const openCompose = (p: Pj, again: boolean) => { setCompose(p); setReassign(again); setDetail(p.description); setRate(''); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   async function cancel(c: Call) {
     if (!confirm('ยกเลิกประกาศนี้?')) return;
     await fetch('/api/admin/editing/call?id=' + c.id, { method: 'DELETE' }); load();
@@ -59,20 +56,24 @@ export default function Editing() {
         <section className="card" style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '14px 18px' }}>
           <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 99, flex: '0 0 10px', background: d.webhook ? 'var(--blue)' : 'var(--mut-2)', boxShadow: d.webhook ? '0 0 0 4px var(--blue-bg)' : 'none' }} />
           <div style={{ flex: 1, minWidth: 220 }}>
-            <b style={{ fontSize: 14 }}>{d.webhook ? 'ซิงก์กับ ClickUp อยู่' : 'ยังไม่ได้ซิงก์กับ ClickUp'}</b>
-            <div className="mut" style={{ fontSize: 12 }}>{d.webhook ? 'งานเปลี่ยนเมื่อไหร่ ระบบตรวจ Deadline และแจ้งใน LINE ให้ทันที' : 'กด “เชื่อม ClickUp” ครั้งเดียว ให้ระบบรู้ทันทีเมื่องานเปลี่ยน'}</div>
+            <b style={{ fontSize: 14 }}>{d.webhook ? 'อ่านข้อมูลจาก ClickUp อยู่' : 'ยังไม่ได้รับแจ้งจาก ClickUp'}</b>
+            <div className="mut" style={{ fontSize: 12 }}>หน้านี้เป็นรายงานสถานะ อ่านจาก ClickUp อย่างเดียว ไม่แก้งานใน ClickUp · ใกล้ครบกำหนดจะแจ้งนักตัดต่อใน LINE ให้เอง</div>
           </div>
-          <button className="btn sm ghost" disabled={!!busy} onClick={connect}>{d.webhook ? 'เชื่อมใหม่' : 'เชื่อม ClickUp'}</button>
-          <button className="btn p sm" disabled={!!busy} onClick={check}>{busy === 'check' ? 'กำลังตรวจ…' : 'ตรวจตอนนี้'}</button>
+          {!d.webhook && <button className="btn sm" disabled={!!busy} onClick={connect}>เชื่อม ClickUp (ครั้งเดียว)</button>}
         </section>
         <Grid>
           <Tile label="โปรเจกต์ยังไม่มีคนรับ" value={d.unassigned.length} hot={d.unassigned.length > 0} onClick={() => setTab('new')} />
           <Tile label="กำลังทำ" value={d.inProgress.length} onClick={() => setTab('doing')} />
           <Tile label="ใกล้ครบ / เลยกำหนด" value={d.inProgress.filter(p => p.state !== 'ok').length} hot={d.inProgress.some(p => p.state !== 'ok')} onClick={() => setTab('doing')} />
-          <Tile label="ส่งต่อใหม่ 14 วัน" value={d.reassigned} sub="เลยกำหนดแล้วหาคนแทน" />
+          <Tile label="รับงานจาก LINE แล้ว" value={d.toAddInClickUp.length} sub="รอทีมใส่ชื่อใน ClickUp" hot={d.toAddInClickUp.length > 0} />
         </Grid>
         {d.hiddenOld > 0 && <span className="mut" style={{ fontSize: 12 }}>แสดงเฉพาะงานปัจจุบัน · ซ่อนงานเก่า {d.hiddenOld} รายการ (ข้อมูลใน ClickUp ไม่ถูกแตะ)</span>}
-        {d.unlinkedEditors.length > 0 && <div className="notice"><span>ยังไม่ผูกบัญชี ClickUp: {d.unlinkedEditors.map(x => x.name).join(', ')}</span></div>}
+        {d.toAddInClickUp.length > 0 && (
+          <section className="card" style={{ gap: 6, padding: '12px 16px' }}>
+            <b style={{ fontSize: 14 }}>รับงานจาก LINE แล้ว · ใส่ชื่อใน ClickUp</b>
+            {d.toAddInClickUp.map((x, i) => <span key={i} style={{ fontSize: 13 }}>✋ <b>{x.name}</b> รับ <a href={x.url} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)', fontWeight: 600 }}>{x.project}</a> <span className="mut">· {new Date(x.at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></span>)}
+          </section>)}
+        {d.unlinkedEditors.length > 0 && <span className="mut" style={{ fontSize: 12 }}>นักตัดต่อใน LINE ที่ยังไม่จับคู่กับ ClickUp (จะไม่ได้รับแจ้งเตือน Deadline): {d.unlinkedEditors.map(x => <Link key={x.line_user_id} href={`/admin/line/${x.line_user_id}`} style={{ color: 'var(--blue)', marginRight: 6 }}>{x.name}</Link>)}</span>}
         <div className="seg" style={{ alignSelf: 'flex-start' }}>
           {([['new', `โปรเจกต์ใหม่ (${d.unassigned.length})`], ['doing', `กำลังทำ (${d.inProgress.length})`], ['team', 'ทีมตัดต่อ'], ['done', 'เสร็จล่าสุด']] as const).map(([k, l]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
@@ -82,13 +83,13 @@ export default function Editing() {
           {!d.unassigned.length ? <div className="empty" style={{ gridColumn: '1 / -1' }}>ทุกโปรเจกต์มีคนรับแล้ว 🎉</div> : d.unassigned.map(p => card(p,
             p.call?.status === 'open'
               ? <span className="row" style={{ gap: 6 }}><span className="chip lb">{p.call.reason === 'reassign' ? 'หาคนแทน' : 'ประกาศแล้ว'} · ส่ง {p.call.sent_to} คน</span><button className="btn sm ghost" onClick={() => cancel(p.call!)}>ยกเลิก</button></span>
-              : <button className="btn p sm" onClick={() => { setCompose(p); setDetail(p.description); setRate(''); }}>ประกาศหานักตัดต่อ?</button>))}
+              : <button className="btn p sm" onClick={() => openCompose(p, false)}>ประกาศใน LINE</button>))}
         </section>}
 
         {compose && (
           <section className="card" style={{ borderColor: 'var(--blue)' }}>
-            <h2>ประกาศโปรเจกต์ · {compose.name}</h2>
-            <span className="mut" style={{ fontSize: 13 }}>{compose.total} คลิป · Deadline {dueText(compose.due)} · ส่งถึงนักตัดต่อ {d.editorsOnLine} คน · คนแรกที่กดรับจะถูก assign ทั้งโปรเจกต์ใน ClickUp</span>
+            <h2>{reassign ? 'ประกาศหาคนแทนใน LINE' : 'ประกาศโปรเจกต์ใน LINE'} · {compose.name}</h2>
+            <span className="mut" style={{ fontSize: 13 }}>{compose.total} คลิป · Deadline {dueText(compose.due)} · ส่งถึงนักตัดต่อใน LINE OA{reassign ? ' (ยกเว้นคนที่รับอยู่)' : ''} · คนแรกที่กดรับจะขึ้นในหน้านี้ให้ทีมใส่ชื่อใน ClickUp · ไม่แก้อะไรใน ClickUp</span>
             <label className="f">รายละเอียดงาน (ดึงจาก description ใน ClickUp แก้ได้)<textarea className="in-t" style={{ height: 110, padding: 10 }} value={detail} onChange={e => setDetail(e.target.value)} /></label>
             {compose.refs.length > 0 && <span style={{ fontSize: 13 }}>REF ที่จะแนบ: {compose.refs.slice(0, 2).map(u => <a key={u} href={u} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)', marginRight: 8 }}>{u.replace(/^https?:\/\//, '').slice(0, 40)}</a>)}</span>}
             <label className="f">ค่าตัว (ไม่บังคับ)<input className="in-t" value={rate} onChange={e => setRate(e.target.value)} placeholder="เช่น 800 บาท / คลิป" /></label>
@@ -100,7 +101,9 @@ export default function Editing() {
 
         {tab === 'doing' && <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {!d.inProgress.length ? <div className="empty" style={{ gridColumn: '1 / -1' }}>ไม่มีโปรเจกต์ค้าง</div> : d.inProgress.map(p => card(p,
-            null))}
+            p.state !== 'overdue' ? null
+            : p.call?.status === 'open' ? <span className="chip lb">ประกาศหาคนแทนแล้ว</span>
+            : <button className="btn sm" onClick={() => openCompose(p, true)}>หาคนแทนใน LINE</button>))}
         </section>}
 
         {tab === 'team' && <section className="card" style={{ padding: 0 }}><div className="tblw"><table className="tbl">
