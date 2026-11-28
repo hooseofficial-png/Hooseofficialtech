@@ -10,7 +10,7 @@ export const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.hooseoffici
 /** Editor application (Google Form), opened from the "กรอกใบสมัคร" button. */
 export const EDITOR_APPLY_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLScDwPK3KVaD4aiR8Kig3Cu3h7sb2yeuxWp4SQNznXCkgfVkUQ/viewform?usp=dialog';
 /** Step 5 for editors who passed: onboarding form. */
-export const EDITOR_ONBOARD_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSdHE25F9u1ZPgTdwRUk_jWRhKETLMuz2BH0WR3XSatNxs2qqA/viewform?usp=header';
+export const EDITOR_ONBOARD_FORM = 'https://forms.gle/9zCBtDNKpoCAe2au8';
 
 type Btn = { label: string; data?: string; display?: string; uri?: string; primary?: boolean };
 
